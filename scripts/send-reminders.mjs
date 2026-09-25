@@ -85,11 +85,11 @@ async function main() {
   const now = nowKey(TZ);
   const users = await db.collection('users').listDocuments();
   let sent = 0;
-  let reads = 0;
+  let reads = 0, found = 0;
   for (const u of users) {
     // read only boxes with an email reminder (keeps Firestore reads tiny however big the board is)
     const snap = await u.collection('nodes').where('notify', '!=', null).get();
-    reads += Math.max(1, snap.size);
+    reads += Math.max(1, snap.size); found += snap.size;
     const nodes = Object.fromEntries(snap.docs.map(d => [d.id, { ...d.data(), id: d.id }]));
     const due = pickEmails(nodes, now);
     // fetch the boxes above the ones being emailed, for the "In: A › B" line
@@ -114,7 +114,7 @@ async function main() {
       sent++;
     }
   }
-  console.log(`${now} (${TZ}): ${sent} email(s) sent, ${reads} Firestore read(s).`);
+  console.log(`${now} (${TZ}): ${sent} email(s) sent; ${found} task(s) with reminders; ${reads} Firestore read(s).`);
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
