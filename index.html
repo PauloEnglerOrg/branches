@@ -490,14 +490,15 @@ function notifyText(n){
   const ds=(f.days||[]).map(d=>d===0?'on the day':d===1?'1 day before':`${d} days before`);
   return `Email to ${(f.to||[]).length} recipient${(f.to||[]).length===1?'':'s'}${ds.length?', '+ds.join(', '):''}`;
 }
-function nextEmail(n){  // the next email the daily job would send, as {date, days}
+// the next email the scheduled job would send: on the reminder day at the task's time (09:00 if none)
+function nextEmail(n){
   const f=n.notify,t=parseDue(n.due);if(!f||!t||isNaN(t)||n.done||!(f.to||[]).length)return null;
-  const today=new Date();today.setHours(0,0,0,0);const due=new Date(t.getFullYear(),t.getMonth(),t.getDate());
-  if(due<today)return null;
-  const opts=(f.days||[]).filter(d=>!(f.sent||{})[n.due+'|'+d]).map(d=>({d,date:new Date(due.getFullYear(),due.getMonth(),due.getDate()-d)})).sort((a,b)=>a.date-b.date);
+  const now=new Date(),hasTime=n.due.includes('T');
+  if(new Date(t.getFullYear(),t.getMonth(),t.getDate(),23,59)<now)return null;  // the due day is over
+  const opts=(f.days||[]).filter(d=>!(f.sent||{})[n.due+'|'+d])
+    .map(d=>({d,date:new Date(t.getFullYear(),t.getMonth(),t.getDate()-d,hasTime?t.getHours():9,hasTime?t.getMinutes():0)})).sort((a,b)=>a.date-b.date);
   if(!opts.length)return null;
-  // a reminder day that has already passed goes out at the next daily run
-  return opts[0].date<today?{d:opts[0].d,date:today,catchup:true}:opts[0];
+  return opts[0].date<now?{...opts[0],catchup:true}:opts[0];  // its time has passed: goes out at the next check
 }
 // tick a box: a repeating task rolls on to its next date instead of staying done
 function toggleDone(n){
@@ -819,7 +820,7 @@ function renderPanel(){
       ${bad.length?`<div class="hint" style="color:var(--warn)">Doesn’t look like an email: ${esc(bad.join(', '))}</div>`:''}
       <label class="fl" for="pNotifyDays">Days before the due date</label>
       <input class="inp" id="pNotifyDays" value="${esc((n.notify.days||[]).join(', '))}" placeholder="e.g. 7, 1, 0" inputmode="numeric" autocomplete="off">
-      <div class="hint">${!n.due?'Add a due date so the reminder knows when to go out. ':''}0 means the morning of the due day; separate several with commas. Emails go out once a day at about 9:00 (Dubai time).${ne?` Next email: ${ne.catchup?'at the next daily run':esc(ne.date.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))}.`:''}</div>`})():''}
+      <div class="hint">${!n.due?'Add a due date so the reminder knows when to go out. ':''}0 means on the due day; separate several with commas. Each email goes out at the task’s due time on that day (9:00 if it has no time), within about 15 minutes.${ne?` Next email: ${ne.catchup?'within the next 15 minutes':esc(ne.date.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})+', '+ne.date.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}))}.`:''}</div>`})():''}
     </div>`:''}
     <div class="field"><span class="fl">List</span>
       <div class="plist">${(n.items||[]).map(i=>`<div class="pitem"><button class="pchk ${i.done?'on':''}" data-act="pitem" data-item="${i.id}" aria-label="Toggle item"></button><input class="inp" data-itemtext="${i.id}" value="${esc(i.text)}"><button class="x" data-act="delitem" data-item="${i.id}" aria-label="Remove item">×</button></div>`).join('')}</div>

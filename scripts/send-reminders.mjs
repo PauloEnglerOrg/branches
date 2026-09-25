@@ -1,6 +1,7 @@
-// Daily job (GitHub Actions): emails reminders for Branches tasks.
-// A task with notify = {to:[emails], days:[days before due]} gets one email on each of those days
-// (or the first run after, if a run was missed), and the job records what it sent in notify.sent.
+// Scheduled job (GitHub Actions, every 15 minutes): emails reminders for Branches tasks.
+// A task with notify = {to:[emails], days:[days before due]} gets one email per entry, sent on that day at the
+// task's due time (or 09:00 if it has no time). A late or missed send still goes out, until the end of the due day.
+// The job records what it sent in notify.sent so nothing goes out twice.
 //
 // Secrets (repo Settings → Secrets and variables → Actions):
 //   FIREBASE_SERVICE_ACCOUNT  the service-account JSON from Firebase (Project settings → Service accounts)
@@ -11,22 +12,27 @@
 const TZ = process.env.TZ_NAME || 'Asia/Dubai';
 const APP_URL = 'https://pauloenglerorg.github.io/branches/';
 
-const todayKey = (tz, now = new Date()) =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+// wall-clock time in `tz` as 'YYYY-MM-DDTHH:MM', so it compares directly with due dates (which are local times)
+export function nowKey(tz, now = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
 const dayNum = k => { const [y, m, d] = k.slice(0, 10).split('-').map(Number); return Date.UTC(y, m - 1, d) / 864e5; };
+const keyOfDay = n => { const d = new Date(n * 864e5); return d.toISOString().slice(0, 10); };
+// when the email for `days` before `due` should go out, as 'YYYY-MM-DDTHH:MM'
+export const sendAt = (due, days) => `${keyOfDay(dayNum(due) - days)}T${due.includes('T') ? due.split('T')[1].slice(0, 5) : '09:00'}`;
 const isTask = n => n.task === true || (n.task === undefined && n.done === true);
 
-// Which emails are due today. nodes: {id: node}; returns [{node, days:[...keys to mark], diff}]
-export function pickEmails(nodes, today) {
+// Which emails should go out now. nodes: {id: node}, now: 'YYYY-MM-DDTHH:MM'; returns [{node, keys, diff}]
+export function pickEmails(nodes, now) {
   const out = [];
   for (const n of Object.values(nodes)) {
     const f = n.notify;
     if (!f || !isTask(n) || n.done || !n.due || !(f.to || []).length || !(f.days || []).length) continue;
-    const diff = dayNum(n.due) - dayNum(today);          // days until due
-    if (diff < 0) continue;                                // already past
+    if (now > `${n.due.slice(0, 10)}T23:59`) continue;      // the due day is over
     const sent = f.sent || {};
-    const pending = f.days.filter(d => diff <= d && !sent[`${n.due}|${d}`]);
-    if (pending.length) out.push({ node: n, keys: pending.map(d => `${n.due}|${d}`), diff });
+    const pending = f.days.filter(d => sendAt(n.due, d) <= now && !sent[`${n.due}|${d}`]);
+    if (pending.length) out.push({ node: n, keys: pending.map(d => `${n.due}|${d}`), diff: dayNum(n.due) - dayNum(now) });
   }
   return out;
 }
@@ -76,13 +82,13 @@ async function main() {
     service: 'gmail', auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD.replace(/\s+/g, '') },
   });
 
-  const today = todayKey(TZ);
+  const now = nowKey(TZ);
   const users = await db.collection('users').listDocuments();
   let sent = 0;
   for (const u of users) {
     const snap = await u.collection('nodes').get();
     const nodes = Object.fromEntries(snap.docs.map(d => [d.id, { ...d.data(), id: d.id }]));
-    for (const { node, keys, diff } of pickEmails(nodes, today)) {
+    for (const { node, keys, diff } of pickEmails(nodes, now)) {
       const mail = buildEmail(node, nodes, diff);
       const to = node.notify.to.filter(e => /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(e));
       if (!to.length) continue;
@@ -94,7 +100,7 @@ async function main() {
       sent++;
     }
   }
-  console.log(`${today} (${TZ}): ${sent} email(s) sent.`);
+  console.log(`${now} (${TZ}): ${sent} email(s) sent.`);
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {

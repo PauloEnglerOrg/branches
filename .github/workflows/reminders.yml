@@ -2,7 +2,7 @@ name: Email reminders
 
 on:
   schedule:
-    - cron: '0 5 * * *'   # every day at 05:00 UTC = 09:00 in Dubai
+    - cron: '*/15 * * * *'   # every 15 minutes; each task's email goes out at its own time
   workflow_dispatch:       # "Run workflow" button for a manual run
 
 jobs:
