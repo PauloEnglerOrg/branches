@@ -14,15 +14,19 @@ Core needs: nested groups, free placement, different text sizes, and per-task ch
 - Rendering: `render()` rebuilds all cards into `#nodes`; `drawEdges()` draws bezier connectors in an SVG layer; `applyView()` handles pan and zoom via a CSS transform on `#world`
 - Branch colour is inherited from the root subject (`colorOf`)
 - Side panel (`renderPanel`) edits the selected card; the due list is `renderDue`
+- Sync: Firebase (project `branches-f3238`), Google sign-in + Firestore, SDK loaded by dynamic `import()` from gstatic.
+  One doc per card at `users/{uid}/nodes/{id}`; `save()` also calls `queuePush()`, which diffs against `synced` and batch-writes changes.
+  `onRemote` applies incoming changes (an unsent local edit wins). The first sign-in on a device uploads if the cloud is empty,
+  otherwise loads the cloud board and keeps the old local one under `branches.presync`. Pan/zoom (`S.view`) stays per device.
+  Firestore rules only allow `request.auth.uid == uid`.
 
 ## Conventions
-- Keep it dependency-free unless a feature clearly needs a library
+- Keep it dependency-free unless a feature clearly needs a library (Firebase is the one exception, for sync)
 - Light and dark themes use CSS custom properties on `:root`
 - Must keep working on mobile (pointer events, pinch zoom, bottom-sheet panel under 720px)
 
 ## Possible next steps
 - Split into `index.html`, `styles.css` and `app.js`
-- Sync across devices (e.g. Supabase or Firebase) so phone and laptop share one board
 - Real reminders when the page is closed (PWA + service worker + push)
 - Make it installable as a PWA (manifest + icons)
 - Multiple boards

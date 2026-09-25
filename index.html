@@ -107,6 +107,9 @@ button{cursor:pointer}
 .badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--warn);color:#fff;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
 .badge[hidden]{display:none}
 #zoomlbl{font-size:12px;color:var(--muted);min-width:40px}
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.sdot.ok{background:#16825A}.sdot.saving,.sdot.loading{background:var(--soon)}.sdot.error{background:var(--warn)}
+.btn[hidden]{display:none}
 
 #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:var(--muted);font-size:18px;text-align:center;padding:24px}
 #empty[hidden]{display:none}
@@ -153,6 +156,9 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
 #modal[hidden]{display:none}
 #modal .box{background:var(--panel);border-radius:14px;padding:18px;width:min(520px,100%);display:grid;gap:12px;max-height:100%;overflow:auto}
 #modal h2{margin:0;font-size:20px;letter-spacing:-.01em}
+#modal h3{margin:6px 0 0;font-size:15px;font-weight:600}
+#syncBox,#presyncBox{display:grid;gap:8px}
+#presyncBox[hidden],#syncSec[hidden]{display:none}
 #modal textarea{width:100%;height:120px;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px;font-size:12px;resize:vertical}
 
 #toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--paper);border-radius:10px;padding:9px 10px 9px 14px;
@@ -196,6 +202,7 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
     <button class="btn" id="bIn" aria-label="Zoom in">+</button>
     <button class="btn" id="bFit">Fit</button>
     <span class="sep"></span>
+    <button class="btn" id="bSync" hidden><span class="sdot" id="syncDot"></span><span id="syncLbl">Sync</span></button>
     <button class="btn" id="bBackup">Backup</button>
   </div>
 
@@ -204,8 +211,16 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
 
   <div id="modal" hidden>
     <div class="box">
+      <div id="syncSec" hidden>
+        <h2>Sync</h2>
+        <div id="syncBox"></div>
+        <div id="presyncBox" hidden>
+          <p class="hint" style="margin:0">This device had a different board before you signed in. It was kept aside in case you need it.</p>
+          <div class="row"><button class="btn" id="bkPresync" style="border:1px solid var(--line)">Replace synced board with it</button><button class="btn" id="bkPresyncDrop">Discard it</button></div>
+        </div>
+      </div>
       <h2>Backup</h2>
-      <p class="hint" style="margin:0">Your board is saved in this browser. Copy the backup below and keep it somewhere safe, or paste a backup to restore it here or on another device.</p>
+      <p class="hint" style="margin:0">Copy the backup below and keep it somewhere safe, or paste a backup to replace this board.</p>
       <textarea id="bkOut" readonly></textarea>
       <div class="row"><button class="btn primary" id="bkCopy">Copy backup</button></div>
       <textarea id="bkIn" placeholder="Paste a backup here"></textarea>
@@ -224,6 +239,15 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
 (() => {
 const COLORS=['#2E57E6','#CF3429','#16825A','#B26B0E','#7440D0','#0E8398','#C0327F','#4A5462'];
 const KEY='branches.v1';
+/* Firebase web config (public by design; the Firestore rules keep each board private). null = sync off */
+const FIREBASE_CONFIG={
+  apiKey:'AIzaSyCfUtnyeITPz98iVj4E9deEwOYhTHdNfOI',
+  authDomain:'branches-f3238.firebaseapp.com',
+  projectId:'branches-f3238',
+  storageBucket:'branches-f3238.firebasestorage.app',
+  messagingSenderId:'522153718678',
+  appId:'1:522153718678:web:05ce4e50f6527591b163b7'
+};
 const $=s=>document.querySelector(s);
 const canvas=$('#canvas'), world=$('#world'), edges=$('#edges'), nodesEl=$('#nodes');
 const panel=$('#panel'), duelist=$('#duelist');
@@ -243,7 +267,7 @@ function host(u){try{return new URL(safeUrl(u)).hostname.replace(/^www\./,'')||u
 
 /* ---------- storage ---------- */
 function load(){try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r);if(d&&d.nodes){S=d;S.view=S.view||{x:0,y:0,k:1};return true}}}catch(e){}return false}
-let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},200)}
+let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},200);queuePush()}
 
 /* ---------- dates ---------- */
 function parseDue(d){if(!d)return null;const [ds,ts]=d.split('T');const [y,m,dd]=ds.split('-').map(Number);if(!y)return null;
@@ -581,7 +605,8 @@ function checkReminders(){
 setInterval(checkReminders,30e3);
 
 /* ---------- backup ---------- */
-$('#bBackup').onclick=()=>{$('#bkOut').value=JSON.stringify({app:'branches',v:1,nodes:S.nodes});$('#bkIn').value='';$('#modal').hidden=false};
+function openModal(){$('#bkOut').value=JSON.stringify({app:'branches',v:1,nodes:S.nodes});$('#bkIn').value='';renderSyncBox();$('#modal').hidden=false}
+$('#bBackup').onclick=openModal;
 $('#bkClose').onclick=()=>$('#modal').hidden=true;
 $('#modal').addEventListener('click',e=>{if(e.target.id==='modal')$('#modal').hidden=true});
 $('#bkCopy').onclick=async()=>{
@@ -619,6 +644,104 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();del(sel)}
 });
 
+/* ---------- sync (Firebase: one Firestore doc per card under users/{uid}/nodes) ---------- */
+const FB='https://www.gstatic.com/firebasejs/12.19.0/';
+const SYNC_UID='branches.syncUid',PRESYNC='branches.presync';
+let fb=null,db=null,user=null,unsub=null,firstSnap=true,synced={},pushT=null;
+const canon=v=>Array.isArray(v)?'['+v.map(canon).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+':'+canon(v[k])).join(',')+'}':JSON.stringify(v??null);
+const clean=n=>{const o={...n};delete o._new;return o};
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}
+function setSync(st){
+  const lbl={off:'Sync',loading:'Connecting…',ok:'Synced',saving:'Saving…',offline:'Offline',error:'Sync error'}[st];
+  $('#syncDot').className='sdot '+st;$('#syncLbl').textContent=lbl;
+}
+function renderSyncBox(){
+  $('#syncSec').hidden=!FIREBASE_CONFIG;if(!FIREBASE_CONFIG)return;
+  $('#syncBox').innerHTML=user
+    ?`<p class="hint" style="margin:0">Signed in as <b>${esc(user.email||user.displayName||'you')}</b>. Changes appear on every device where you're signed in.</p><div class="row"><button class="btn" id="bSignOut" style="border:1px solid var(--line)">Sign out on this device</button></div>`
+    :`<p class="hint" style="margin:0">Sign in with Google to keep this board in step across your laptop and phone.</p><div class="row"><button class="btn primary" id="bSignIn">Sign in with Google</button></div>`;
+  $('#presyncBox').hidden=!(user&&lsGet(PRESYNC));
+}
+function queuePush(){if(!user||firstSnap)return;clearTimeout(pushT);pushT=setTimeout(push,400)}
+function push(){
+  clearTimeout(pushT);if(!user||firstSnap)return;
+  const ops=[];
+  for(const n of all()){if(isEmpty(n))continue;const c=clean(n),s=canon(c);if(synced[n.id]!==s){ops.push([n.id,c]);synced[n.id]=s}}
+  for(const id in synced)if(!S.nodes[id]){ops.push([id,null]);delete synced[id]}
+  for(let i=0;i<ops.length;i+=400){
+    const b=fb.writeBatch(db);
+    for(const [id,d] of ops.slice(i,i+400)){const r=fb.doc(db,'users',user.uid,'nodes',id);d?b.set(r,d):b.delete(r)}
+    b.commit().catch(e=>{console.error(e);setSync('error')});
+  }
+}
+function onRemote(snap){
+  const m=snap.metadata;
+  if(firstSnap){
+    if(m.fromCache&&snap.empty)return;           // wait for the server before deciding anything
+    firstSnap=false;
+    const remote={};snap.forEach(d=>remote[d.id]={...d.data(),id:d.id});
+    const known=lsGet(SYNC_UID)===user.uid;lsSet(SYNC_UID,user.uid);
+    if(snap.empty&&!known){synced={};push();toast('Signed in. This board now syncs to your other devices.')}
+    else{
+      const mine=all().filter(n=>!isEmpty(n));
+      if(!known&&mine.length&&canon(Object.fromEntries(mine.map(n=>[n.id,clean(n)])))!==canon(remote)){
+        lsSet(PRESYNC,JSON.stringify(S.nodes));toast('Loaded your synced board. This device’s old board was kept aside.','Details',openModal);
+      }else if(!known)toast('Signed in. Your synced board is loaded.');
+      S.nodes=remote;synced={};for(const id in remote)synced[id]=canon(remote[id]);
+      if(sel&&!N(sel)){sel=null;closePanel()}
+      render();if(!known)fit();save();
+    }
+  }else{
+    let changed=false;
+    for(const c of snap.docChanges()){
+      const id=c.doc.id;
+      if(c.type==='removed'){delete synced[id];if(S.nodes[id]){delete S.nodes[id];changed=true;if(sel===id){sel=null;closePanel()}}continue}
+      if(c.doc.metadata.hasPendingWrites)continue;   // our own write coming back
+      const d={...c.doc.data(),id},s=canon(d),local=N(id);
+      const pending=local&&synced[id]!==undefined&&canon(clean(local))!==synced[id];
+      synced[id]=s;
+      if(pending||(local&&canon(clean(local))===s))continue;  // unsent local edit wins; identical needs nothing
+      S.nodes[id]=d;changed=true;
+    }
+    if(changed){render();if(sel&&!panel.contains(document.activeElement))renderPanel();save()}
+  }
+  setSync(m.hasPendingWrites?'saving':m.fromCache?'offline':'ok');
+  renderSyncBox();
+}
+async function initSync(){
+  if(!FIREBASE_CONFIG)return;
+  $('#bSync').hidden=false;setSync('loading');
+  try{
+    const [app,auth,fs]=await Promise.all(['app','auth','firestore'].map(x=>import(FB+'firebase-'+x+'.js')));
+    fb={...auth,...fs};
+    const a=app.initializeApp(FIREBASE_CONFIG);
+    fb.au=auth.getAuth(a);
+    db=fs.initializeFirestore(a,{ignoreUndefinedProperties:true,localCache:fs.persistentLocalCache({tabManager:fs.persistentMultipleTabManager()})});
+    auth.onAuthStateChanged(fb.au,u=>{
+      if(unsub){unsub();unsub=null}
+      user=u;firstSnap=true;synced={};
+      if(!u){setSync('off');renderSyncBox();return}
+      setSync('loading');renderSyncBox();
+      unsub=fs.onSnapshot(fs.collection(db,'users',u.uid,'nodes'),{includeMetadataChanges:true},onRemote,e=>{console.error(e);setSync('error');toast('Sync stopped: '+(e.code||e.message))});
+    });
+  }catch(e){console.error(e);setSync('error')}
+}
+$('#bSync').onclick=()=>{if(!fb)return;if(!user)signIn();else openModal()};
+function signIn(){
+  fb.signInWithPopup(fb.au,new fb.GoogleAuthProvider()).catch(e=>{if(e.code!=='auth/popup-closed-by-user'&&e.code!=='auth/cancelled-popup-request')toast('Sign-in failed: '+(e.code||e.message))});
+}
+$('#modal').addEventListener('click',e=>{
+  if(e.target.id==='bSignIn')signIn();
+  else if(e.target.id==='bSignOut'){push();fb.signOut(fb.au);lsSet(SYNC_UID,null);toast('Signed out. The board stays on this device but no longer syncs.')}
+  else if(e.target.id==='bkPresync'){
+    try{const prev=JSON.stringify(S.nodes);S.nodes=JSON.parse(lsGet(PRESYNC));lsSet(PRESYNC,null);sel=null;closePanel();render();fit();save();$('#modal').hidden=true;
+      toast('Board replaced','Undo',()=>{S.nodes=JSON.parse(prev);render();fit();save()})}catch(_){}
+  }
+  else if(e.target.id==='bkPresyncDrop'){lsSet(PRESYNC,null);renderSyncBox()}
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&user)push()});
+
 /* ---------- boot ---------- */
 const had=load();
 if(!had)seed();
@@ -626,6 +749,7 @@ applyView();render();
 if(!had)requestAnimationFrame(()=>{render();fit()});
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{drawEdges()});
 checkReminders();
+initSync();
 window.addEventListener('resize',()=>applyView());
 })();
 </script>
