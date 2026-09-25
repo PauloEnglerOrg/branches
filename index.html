@@ -108,6 +108,15 @@ button{cursor:pointer}
 .algn{display:inline-flex;flex-wrap:wrap;gap:4px}
 .algn .btn{border:1px solid var(--line);background:var(--card);height:32px;padding:0 9px;font-size:13px;gap:5px}
 .algn .btn:disabled{opacity:.4}
+.unlh{position:absolute;left:-11px;bottom:-11px;width:22px;height:22px;border-radius:50%;background:var(--card);color:var(--ink);border:1.5px solid var(--warn);
+  padding:0;display:flex;align-items:center;justify-content:center;z-index:2;box-shadow:var(--shadow)}
+.unlh.on,.unlh:hover{background:var(--warn);color:#fff}
+.unlh::after{content:"";position:absolute;inset:-8px}
+.unmenu{position:absolute;left:-11px;top:calc(100% + 16px);z-index:6;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);
+  padding:4px;display:grid;min-width:210px;font-size:13px;color:var(--ink)}
+.unmenu button{border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:7px;white-space:nowrap;font-size:13px;color:var(--ink)}
+.unmenu button:hover:not(:disabled){background:var(--hover)}
+.unmenu button:disabled{opacity:.4;cursor:default}
 .isoh{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:var(--card);color:var(--ink);border:1.5px solid var(--accent);
   padding:0;display:flex;align-items:center;justify-content:center;z-index:2;box-shadow:var(--shadow)}
 .isoh.on,.isoh:hover{background:var(--accent);color:#fff}
@@ -579,6 +588,16 @@ function seed(){
 const SIZES=[[-1,'XXS'],[0,'XS'],[1,'S'],[2,'M'],[3,'L'],[4,'XL']];
 const sizeOf=n=>n.size??2;
 const szClass=n=>{const v=sizeOf(n);return v<0?'sm'+(-v):'s'+v};
+// unlink handle on the selected box: a small menu to cut the line above it or the lines below it
+let unlinkMenu=null;
+function unlinkHTML(n){
+  const k=kids(n.id).length,p=n.parent&&N(n.parent),open=unlinkMenu===n.id;
+  return `<button class="unlh${open?' on':''}" data-act="unlmenu" title="Unlink" aria-label="Unlink" aria-expanded="${open}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M9 15l-2 2a3.5 3.5 0 0 1-5-5l2-2M15 9l2-2a3.5 3.5 0 0 1 5 5l-2 2M8 2v3M2 8h3M16 22v-3M22 16h-3"/></svg></button>`+
+    (open?`<div class="unmenu" role="menu"><button data-act="unlup" ${p?'':'disabled'} role="menuitem">↑ Unlink from above${p?` (“${esc((p.title||'Untitled').slice(0,20))}”)`:''}</button>
+      <button data-act="unldown" ${k?'':'disabled'} role="menuitem">↓ Unlink below${k?` (${k} box${k>1?'es':''})`:''}</button></div>`:'');
+}
+function unlinkUp(n){if(!n.parent)return;n.parent=null;delete n.side;nextLabel=`Unlinked “${(n.title||'Untitled').slice(0,30)}” from above`;toast('Unlinked from above')}
+function unlinkDown(n){const ks=kids(n.id);if(!ks.length)return;ks.forEach(k=>{k.parent=null;delete k.side});nextLabel=`Unlinked ${ks.length} box${ks.length>1?'es':''} below “${(n.title||'Untitled').slice(0,30)}”`;toast(`Unlinked ${ks.length} box${ks.length>1?'es':''} below`)}
 function cardHTML(n){
   const col=shown(n);
   const items=(n.items||[]).map(i=>`<li class="${i.done?'done':''}"><button class="ichk ${i.done?'on':''}" data-act="item" data-item="${i.id}" aria-label="Toggle item"></button><span>${esc(i.text)||'&nbsp;'}</span></li>`).join('');
@@ -590,7 +609,7 @@ function cardHTML(n){
   const rp=(n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'')+(n.notify&&(n.notify.to||[]).length?`<span class="rep" title="${esc(notifyText(n))}">✉</span>`:'');
   const meta=(di||links||prog||rp)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${rp}${prog}${links}</div>`:'';
   return `<div class="node ${szClass(n)}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}${msel.size>1&&[...msel][0]===n.id?' ref':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
-<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id?`<button class="isoh${focusId()===n.id?' on':''}" data-act="iso" title="${focusId()===n.id?'Stop isolating':'Isolate: show only this box and its branches'}" aria-label="Isolate this box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2"/></svg></button>`:''}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
+<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id&&(n.parent||kids(n.id).length)?unlinkHTML(n):''}${sel===n.id?`<button class="isoh${focusId()===n.id?' on':''}" data-act="iso" title="${focusId()===n.id?'Stop isolating':'Isolate: show only this box and its branches'}" aria-label="Isolate this box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2"/></svg></button>`:''}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
 function foldHTML(n){
   const ks=kids(n.id);if(!ks.length)return '';
@@ -748,12 +767,13 @@ function delMany(list){
 
 /* ---------- selection & panel ---------- */
 function select(id,focus){
-  const prev=sel;sel=id;msel.clear();if(view==='branches')reveal(id);closeHist();
+  const prev=sel;sel=id;msel.clear();unlinkMenu=null;if(view==='branches')reveal(id);closeHist();
   if(prev&&prev!==id&&isEmpty(N(prev)))delete S.nodes[prev];
   closeDue();render();renderPanel();ensureVisible(id);
   if(focus){const t=$('#pTitle');if(t){t.focus();t.setSelectionRange(t.value.length,t.value.length)}}
 }
 function deselect(){
+  unlinkMenu=null;
   if(sel&&isEmpty(N(sel)))delete S.nodes[sel];
   sel=null;msel.clear();closePanel();render();save();
 }
@@ -793,7 +813,8 @@ function renderMultiPanel(){
     </div>
     <div class="actions">
       <button class="btn" data-act="mlink">Link all to…</button>
-      <button class="btn" data-act="munlink">Unlink all</button>
+      <button class="btn" data-act="munlink">Unlink from above</button>
+      <button class="btn" data-act="munlinkdown">Unlink below</button>
       <button class="btn" data-act="mtask">Make tasks</button>
       <button class="btn" data-act="mnotask">Not tasks</button>
       <button class="btn" data-act="mdone">Mark done</button>
@@ -870,7 +891,8 @@ function renderPanel(){
       <button class="btn" data-act="addSibling">Add box below</button>
       <button class="btn" data-act="attach">Link to…</button>
       <button class="btn" data-act="isolate">${focusId()===n.id?'Stop isolating':'Isolate'}</button>
-      ${n.parent?`<button class="btn" data-act="detach">Unlink</button>`:''}
+      ${n.parent?`<button class="btn" data-act="detach">Unlink from above</button>`:''}
+      ${kids(n.id).length?`<button class="btn" data-act="detachDown">Unlink below</button>`:''}
       <button class="btn danger" data-act="delete">Delete</button>
     </div>
   </div>`;
@@ -962,6 +984,7 @@ panel.addEventListener('click',e=>{
       nextLabel=d?`Made ${ns.length} boxes ${d>0?'lighter':'darker'}`:`Reset brightness of ${ns.length} boxes`}
     else if(a==='mcolor')ns.forEach(n=>{if(b.dataset.v)n.color=b.dataset.v;else delete n.color});
     else if(a==='mlink'){attachFrom=ns.map(n=>n.id);canvas.classList.add('attaching');if(view!=='branches')setView('branches');toast(`Tap the box to link these ${ns.length} under, or empty space to cancel`);return}
+    else if(a==='munlinkdown'){const set=new Set(ns.map(n=>n.id));let c=0;ns.forEach(n=>kids(n.id).forEach(k=>{if(!set.has(k.id)){k.parent=null;delete k.side;c++}}));nextLabel=`Unlinked ${c} box${c===1?'':'es'} below ${ns.length} boxes`;toast(c?`Unlinked ${c} box${c===1?'':'es'} below`:'Nothing linked below these boxes')}
     else if(a==='munlink'){const set=new Set(ns.map(n=>n.id));ns.forEach(n=>{if(n.parent&&!set.has(n.parent)){n.parent=null;delete n.side}});nextLabel=`Unlinked ${ns.length} boxes`;toast('Unlinked')}
     else if(a==='mtask')ns.forEach(n=>n.task=true);
     else if(a==='mnotask')ns.forEach(n=>{n.task=false;n.done=false});
@@ -988,7 +1011,8 @@ panel.addEventListener('click',e=>{
   else if(a==='addSibling')select(addSibling(sel),true);
   else if(a==='isolate'){if(view!=='branches')setView('branches');if(focusId()===n.id)exitFocus(focusStack.length-1);else isolate(n.id)}
   else if(a==='attach'){attachFrom=sel;canvas.classList.add('attaching');toast('Tap the box to link it under, or empty space to cancel')}
-  else if(a==='detach'){n.parent=null;delete n.side;render();renderPanel();save();toast('Unlinked')}
+  else if(a==='detach'){unlinkUp(n);render();renderPanel();save()}
+  else if(a==='detachDown'){unlinkDown(n);render();renderPanel();save()}
   else if(a==='delete')del(sel);
 });
 // link one box, or several, under `target`. With several, only the top-most selected boxes are relinked,
@@ -1011,6 +1035,8 @@ function doAttach(target){
 nodesEl.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]');if(!b)return;const id=b.closest('.node').dataset.id;const n=N(id);
   if(b.dataset.act==='add'){select(addChildDir(id,b.dataset.dir),true);return}
+  if(b.dataset.act==='unlmenu'){unlinkMenu=unlinkMenu===id?null:id;render();return}
+  if(b.dataset.act==='unlup'||b.dataset.act==='unldown'){unlinkMenu=null;if(b.dataset.act==='unlup')unlinkUp(n);else unlinkDown(n);render();renderPanel();save();return}
   if(b.dataset.act==='iso'){if(focusId()===id)exitFocus(focusStack.length-1);else isolate(id);return}
   if(b.dataset.act==='fold'){
     if(n.collapsed)delete n.collapsed;else n.collapsed=true;
@@ -1052,6 +1078,7 @@ function finishEdit(){
 /* ---------- pointer: pan, drag, pinch ---------- */
 const pts=new Map();let g=null;
 canvas.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse')pts.clear();  // a mouse has one pointer: drop any press whose release never arrived
   if(e.target.closest('[contenteditable]'))return;
   if(editing)finishEdit();
   if(e.target.closest('button,a'))return;
