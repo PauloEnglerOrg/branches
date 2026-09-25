@@ -178,6 +178,10 @@ button{cursor:pointer}
 .pitem{display:flex;gap:8px;align-items:center}
 .pitem .inp{flex:1;height:32px;border-color:transparent;background:transparent;padding:0 6px}
 .pitem .inp:hover,.pitem .inp:focus{border-color:var(--line);background:var(--card)}
+.tog{display:inline-flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);user-select:none}
+.tog input{appearance:none;-webkit-appearance:none;width:30px;height:18px;border-radius:999px;background:var(--line);position:relative;margin:0;cursor:pointer;transition:background .15s;flex:none}
+.tog input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.tog input:checked{background:var(--accent)}.tog input:checked::after{transform:translateX(12px)}
 .pchk{flex:none;width:16px;height:16px;border-radius:4px;border:1.5px solid var(--muted);background:transparent;padding:0;position:relative}
 .pchk.on{background:var(--ink);border-color:var(--ink)}
 .pchk.on::after{border-color:var(--paper)}
@@ -316,6 +320,8 @@ function hiddenNode(id){let n=N(id),guard=0;while(n&&n.parent&&guard++<999){n=N(
 const visible=()=>all().filter(n=>!hiddenNode(n.id));
 function reveal(id){let n=N(id),guard=0;while(n&&n.parent&&guard++<999){n=N(n.parent);if(n)delete n.collapsed}}
 function desc(id){const out=[],st=[id];while(st.length){const c=st.pop();for(const k of kids(c)){out.push(k.id);st.push(k.id)}}return out}
+// a box shows a tick-box only when it's a task (older boxes that are already ticked count as tasks)
+const isTask=n=>!!n&&(n.task===true||(n.task===undefined&&n.done===true));
 const colorOf=id=>(N(id)&&N(id).color)||'';
 // white or dark text on a coloured box, by perceived brightness
 function onColor(hex){const m=/^#?([0-9a-f]{6})$/i.exec(hex||'');if(!m)return '#fff';const v=parseInt(m[1],16),r=v>>16,g=v>>8&255,b=v&255;
@@ -363,11 +369,11 @@ function cardHTML(n){
   const di=dueInfo(n.due);
   const links=(n.links||[]).map(l=>`<a class="lnk" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener">${esc(l.label||host(l.url))}</a>`).join('');
   let prog='';
-  const d=desc(n.id).map(N);if(d.length)prog=`<span class="prog">${d.filter(x=>x.done).length} of ${d.length} done</span>`;
+  const d=desc(n.id).map(N).filter(isTask);if(d.length)prog=`<span class="prog">${d.filter(x=>x.done).length} of ${d.length} done</span>`;
   if(n.items&&n.items.length)prog+=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
   const meta=(di||links||prog)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${prog}${links}</div>`:'';
   return `<div class="node s${n.size||2}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
-<div class="head"><button class="chk" data-act="done" aria-label="Mark done"></button><div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span><span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
+<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span><span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
 function foldHTML(n){
   const ks=kids(n.id);if(!ks.length)return '';
@@ -543,6 +549,8 @@ function renderMultiPanel(){
     </div>
     <div class="field"><span class="fl">Colour</span>${swatches(ns.every(n=>n.color===ns[0].color)?ns[0].color:null,'mcolor','mColor')}</div>
     <div class="actions">
+      <button class="btn" data-act="mtask">Make tasks</button>
+      <button class="btn" data-act="mnotask">Not tasks</button>
       <button class="btn" data-act="mdone">Mark done</button>
       <button class="btn" data-act="mundone">Mark not done</button>
       <button class="btn danger" data-act="mdelete">Delete ${ns.length}</button>
@@ -569,9 +577,12 @@ function renderPanel(){
       <div class="hint"><kbd>Enter</kbd> adds a box below · <kbd>Tab</kbd> adds a branch · <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back up</div>
     </div>
     <div class="field"><span class="fl">Text size</span>
-      <div class="row"><div class="seg">${[1,2,3,4].map(s=>`<button data-act="size" data-v="${s}" class="${(n.size||2)===s?'on':''}">${['S','M','L','XL'][s-1]}</button>`).join('')}</div>
-      <button class="btn" data-act="toggleDone" style="border:1px solid var(--line);background:var(--card)">${n.done?'Mark not done':'Mark done'}</button></div>
+      <div class="row"><div class="seg">${[1,2,3,4].map(s=>`<button data-act="size" data-v="${s}" class="${(n.size||2)===s?'on':''}">${['S','M','L','XL'][s-1]}</button>`).join('')}</div></div>
       <div class="hint">Drag the square on the card’s corner to resize the box.${n.w||n.h?` <button class="btn" data-act="resetSize" style="height:26px;padding:0 8px;border:1px solid var(--line);background:var(--card);font-size:12px">Reset box size</button>`:''}</div>
+    </div>
+    <div class="field"><span class="fl">Task</span>
+      <div class="row"><label class="tog"><input type="checkbox" id="pTask" ${isTask(n)?'checked':''}>It’s a task</label>
+      ${isTask(n)?`<button class="btn" data-act="toggleDone" style="border:1px solid var(--line);background:var(--card)">${n.done?'Mark not done':'Mark done'}</button>`:''}</div>
     </div>
     <div class="field"><span class="fl">Colour</span>${swatches(n.color,'color','pColor')}</div>
     <div class="field"><label for="pDate">Due date</label>
@@ -603,6 +614,7 @@ panel.addEventListener('input',e=>{
   if(t.id==='mColor'){[...msel].map(N).filter(Boolean).forEach(n=>n.color=t.value);render();save();return}
   const n=N(sel);if(!n)return;
   if(t.id==='pColor'){n.color=t.value;render();save();return}
+  if(t.id==='pTask'){n.task=t.checked;if(!t.checked)n.done=false;delete n._new;render();renderPanel();save();return}
   if(t.id==='pTitle'){n.title=t.value;if(t.value)delete n._new}
   else if(t.dataset.itemtext){const i=n.items.find(i=>i.id===t.dataset.itemtext);if(i)i.text=t.value}
   else if(t.dataset.linklabel!==undefined){n.links[+t.dataset.linklabel].label=t.value}
@@ -631,7 +643,9 @@ panel.addEventListener('click',e=>{
     if(a==='mdelete'){delMany([...msel]);return}
     if(a==='msize')ns.forEach(n=>n.size=+b.dataset.v);
     else if(a==='mcolor')ns.forEach(n=>{if(b.dataset.v)n.color=b.dataset.v;else delete n.color});
-    else if(a==='mdone'||a==='mundone')ns.forEach(n=>n.done=a==='mdone');
+    else if(a==='mtask')ns.forEach(n=>n.task=true);
+    else if(a==='mnotask')ns.forEach(n=>{n.task=false;n.done=false});
+    else if(a==='mdone'||a==='mundone')ns.forEach(n=>{n.done=a==='mdone';if(n.done)n.task=true});
     render();renderPanel();save();return;
   }
   const n=N(sel);if(!n)return;
@@ -1117,6 +1131,7 @@ function describe(a,b){
   if(only('x','y','side'))return 'Moved '+who;
   if(only('w','h'))return 'Resized '+who;
   if(only('title'))return 'Edited text of '+who;
+  if(only('task','done')&&changed.some(i=>!!a[i].task!==!!b[i].task))return (changed.every(i=>b[i].task)?'Made a task: ':'No longer a task: ')+who;
   if(only('done'))return (changed.every(i=>b[i].done)?'Ticked ':'Unticked ')+who;
   if(only('color'))return 'Recoloured '+who;
   if(only('size'))return 'Changed text size of '+who;
