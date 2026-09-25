@@ -251,6 +251,14 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
 body.panel-open .viewpane{padding-right:372px}
 body:not([data-view="branches"]) .canvas-only{display:none}
 .tl{max-width:760px;margin:0 auto;display:grid;gap:22px}
+.tl.wide{max-width:none}
+.tbar{display:flex;justify-content:flex-start}
+.tcols{display:flex;gap:16px;align-items:flex-start;overflow-x:auto;padding-bottom:8px}
+.tcol{flex:0 0 300px;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;min-width:0}
+.tcol .tsub{flex-wrap:wrap;row-gap:4px}
+.tcol .ts{white-space:normal}
+.tch{margin:0 0 4px;font-size:14px;font-weight:650;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tch .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--c,var(--muted))}
 .tgrp{display:grid;gap:6px}
 .tgrp h3{margin:0 0 2px;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.01em}
 .tgrp h3.over{color:var(--warn)}
@@ -1571,7 +1579,8 @@ function showOnBoard(id){
 }
 
 /* Tasks */
-let showDone=false;
+let showDone=false,taskLayout=lsGet('branches.tasksLayout')==='branch'?'branch':'list';
+function rootId(id){let n=N(id),g=0;while(n&&n.parent&&N(n.parent)&&g++<999)n=N(n.parent);return n?n.id:id}
 function renderTasks(){
   const tasks=all().filter(isTask),open=tasks.filter(n=>!n.done),done=tasks.filter(n=>n.done);
   const now=new Date(),tod=dayKey(now),tom=dayKey(addDays(now,1));
@@ -1591,15 +1600,25 @@ function renderTasks(){
       <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${di||sub?`<div class="tsub">${di?`<span class="due ${di.cls}">${['SUN','MON','TUE','WED','THU','FRI','SAT'][di.t.getDay()]} ${esc(di.label)}</span>`:''}${sub?`<span class="ts">${esc(sub)}</span>`:''}</div>`:''}</div>
       <button class="tgo" data-act="tgo" title="Show on the board" aria-label="Show on the board">↗</button></div>`;
   };
-  const keys=[...groups.keys()].sort();
-  let html=`<div class="tgrp">${keys.flatMap(k=>groups.get(k).items).map(row).join('')}</div>`;
+  const keys=[...groups.keys()].sort(),ordered=keys.flatMap(k=>groups.get(k).items);
+  const bar=`<div class="tbar"><div class="seg" id="tLayout"><button data-lay="list" class="${taskLayout==='list'?'on':''}">One list</button><button data-lay="branch" class="${taskLayout==='branch'?'on':''}">By branch</button></div></div>`;
+  let html;
+  if(taskLayout==='branch'){
+    // one column per tree: tasks connected at any depth share the column of their top box
+    const cols=new Map();
+    for(const n of ordered){const r=rootId(n.id);if(!cols.has(r))cols.set(r,[]);cols.get(r).push(n)}
+    const roots=[...cols.keys()].sort((a,b)=>(N(a).x-N(b).x)||(N(a).y-N(b).y));
+    html=`<div class="tcols">${roots.map(r=>{const rn=N(r),c=shown(rn);return `<div class="tcol">
+      <h3 class="tch"${c?` style="--c:${c}"`:''}><span class="dot"></span>${esc(rn.title||'Untitled')} <span style="font-weight:400;color:var(--muted)">· ${cols.get(r).length}</span></h3>${cols.get(r).map(row).join('')}</div>`}).join('')}</div>`;
+  }else html=`<div class="tgrp">${ordered.map(row).join('')}</div>`;
   if(done.length)html+=`<div class="tgrp"><button class="tdone" data-act="tshowdone">${showDone?'▾':'▸'} Done · ${done.length}</button>${showDone?done.map(row).join(''):''}</div>`;
   if(!tasks.length)html=`<div class="tempty">No tasks yet.<br><span style="font-size:14px">Open a box and switch on “It’s a task”, or press New box here to add one.</span></div>`;
-  listEl.innerHTML=`<div class="tl">${html}</div>`;
+  listEl.innerHTML=`<div class="tl${taskLayout==='branch'?' wide':''}">${bar}${html}</div>`;
 }
 listEl.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]'),r=e.target.closest('.trow');
   if(b&&b.dataset.act==='tshowdone'){showDone=!showDone;renderTasks();return}
+  const lay=e.target.closest('[data-lay]');if(lay){taskLayout=lay.dataset.lay;lsSet('branches.tasksLayout',taskLayout);renderTasks();return}
   if(!r){if(sel||msel.size)deselect();return}
   const id=r.dataset.id,n=N(id);if(!n)return;
   if(b&&b.dataset.act==='tdone'){toggleDone(n);n.task=true;render();if(sel===id)renderPanel();save();return}
