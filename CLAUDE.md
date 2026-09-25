@@ -14,6 +14,7 @@ Core needs: nested groups, free placement, different text sizes, and per-task ch
 - Snapping: while dragging, `snapX` aligns edges/centres and matches gaps between neighbouring cards (y axis via `flip`); pink guides drawn in `#guides`; Alt/Option disables
 - Canvas: mouse drag on empty space draws a selection box (`g.type==='marquee'`, Shift adds); touch, middle button or Space+drag pans; wheel/trackpad pans
 - Undo/redo/History: `hist` = board snapshots since page load, `hi` = current; `save()` queues `checkpoint()` (500ms merge), `describe()` labels steps; remote sync changes become their own step
+- Views (`view`, `setView`): Branches = canvas; Tasks = `#listview` via `renderTasks` (isTask boxes grouped by due date); Calendar = `#calview` via `renderCal` (`calMode` day/week/month/year, `calDate`). `render()` refreshes the active non-canvas view; the side panel works in every view
 - Selection: `sel` is the single selected card (side panel); `msel` is a Set for Shift+click multi-select (multi panel, group drag, bulk delete)
 - Rendering: `render()` rebuilds all cards into `#nodes`; `drawEdges()` draws bezier connectors in an SVG layer; `applyView()` handles pan and zoom via a CSS transform on `#world`
 - Each box has its own optional colour (`colorOf`); presets in `COLORS` plus a native colour picker. Connectors use `--edge` (white in dark mode, dark grey in light mode)
