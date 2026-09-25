@@ -85,10 +85,24 @@ async function main() {
   const now = nowKey(TZ);
   const users = await db.collection('users').listDocuments();
   let sent = 0;
+  let reads = 0;
   for (const u of users) {
-    const snap = await u.collection('nodes').get();
+    // read only boxes with an email reminder (keeps Firestore reads tiny however big the board is)
+    const snap = await u.collection('nodes').where('notify', '!=', null).get();
+    reads += Math.max(1, snap.size);
     const nodes = Object.fromEntries(snap.docs.map(d => [d.id, { ...d.data(), id: d.id }]));
-    for (const { node, keys, diff } of pickEmails(nodes, now)) {
+    const due = pickEmails(nodes, now);
+    // fetch the boxes above the ones being emailed, for the "In: A › B" line
+    for (let pass = 0, need; pass < 20 && (need = [...new Set(due.flatMap(({ node }) => {
+      const ids = []; let c = node.parent;
+      while (c && nodes[c]) c = nodes[c].parent;
+      if (c) ids.push(c); return ids;
+    }))]).length; pass++) {
+      const docs = await db.getAll(...need.map(id => u.collection('nodes').doc(id)));
+      reads += docs.length;
+      for (const d of docs) nodes[d.id] = d.exists ? { ...d.data(), id: d.id } : { id: d.id, title: '' };
+    }
+    for (const { node, keys, diff } of due) {
       const mail = buildEmail(node, nodes, diff);
       const to = node.notify.to.filter(e => /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(e));
       if (!to.length) continue;
@@ -100,7 +114,7 @@ async function main() {
       sent++;
     }
   }
-  console.log(`${now} (${TZ}): ${sent} email(s) sent.`);
+  console.log(`${now} (${TZ}): ${sent} email(s) sent, ${reads} Firestore read(s).`);
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
