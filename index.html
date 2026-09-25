@@ -544,7 +544,7 @@ function cardHTML(n){
   const rp=n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'';
   const meta=(di||links||prog||rp)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${rp}${prog}${links}</div>`:'';
   return `<div class="node ${szClass(n)}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}${msel.size>1&&[...msel][0]===n.id?' ref':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
-<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id?`<button class="isoh${focusId()===n.id?' on':''}" data-act="iso" title="${focusId()===n.id?'Stop isolating':'Isolate: show only this box and its branches'}" aria-label="Isolate this box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2"/></svg></button>`:''}${sel===n.id?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
+<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id?`<button class="isoh${focusId()===n.id?' on':''}" data-act="iso" title="${focusId()===n.id?'Stop isolating':'Isolate: show only this box and its branches'}" aria-label="Isolate this box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2"/></svg></button>`:''}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
 function foldHTML(n){
   const ks=kids(n.id);if(!ks.length)return '';
@@ -741,6 +741,8 @@ function renderMultiPanel(){
     </div>
     <div class="field"><span class="fl">Colour</span>${swatches(ns.every(n=>n.color===ns[0].color)?ns[0].color:null,'mcolor','mColor')}</div>
     <div class="actions">
+      <button class="btn" data-act="mlink">Link all to…</button>
+      <button class="btn" data-act="munlink">Unlink all</button>
       <button class="btn" data-act="mtask">Make tasks</button>
       <button class="btn" data-act="mnotask">Not tasks</button>
       <button class="btn" data-act="mdone">Mark done</button>
@@ -881,6 +883,8 @@ panel.addEventListener('click',e=>{
       nextLabel=`Matched ${ns.length-1} box${ns.length>2?'es':''} to “${(ref.title||'Untitled').slice(0,30)}”`;
     }
     else if(a==='mcolor')ns.forEach(n=>{if(b.dataset.v)n.color=b.dataset.v;else delete n.color});
+    else if(a==='mlink'){attachFrom=ns.map(n=>n.id);canvas.classList.add('attaching');if(view!=='branches')setView('branches');toast(`Tap the box to link these ${ns.length} under, or empty space to cancel`);return}
+    else if(a==='munlink'){const set=new Set(ns.map(n=>n.id));ns.forEach(n=>{if(n.parent&&!set.has(n.parent)){n.parent=null;delete n.side}});nextLabel=`Unlinked ${ns.length} boxes`;toast('Unlinked')}
     else if(a==='mtask')ns.forEach(n=>n.task=true);
     else if(a==='mnotask')ns.forEach(n=>{n.task=false;n.done=false});
     else if(a==='mdone')ns.forEach(n=>{n.task=true;if(n.repeat)toggleDone(n);else n.done=true});
@@ -908,11 +912,20 @@ panel.addEventListener('click',e=>{
   else if(a==='detach'){n.parent=null;delete n.side;render();renderPanel();save();toast('Unlinked')}
   else if(a==='delete')del(sel);
 });
+// link one box, or several, under `target`. With several, only the top-most selected boxes are relinked,
+// so a selected box that hangs under another selected box keeps its place in that branch.
 function doAttach(target){
-  const from=attachFrom;attachFrom=null;canvas.classList.remove('attaching');
-  if(!target){toast('Attach cancelled');return}
-  if(target===from||desc(from).includes(target)){toast('A box can’t go under its own branch');return}
-  const n=N(from);n.parent=target;delete n.side;delete N(target).collapsed;render();renderPanel();save();toast('Linked');
+  const from=[].concat(attachFrom).filter(N);attachFrom=null;canvas.classList.remove('attaching');
+  if(!target){toast('Link cancelled');return}
+  const set=new Set(from),tops=from.filter(id=>{let p=N(id).parent,g=0;while(p&&g++<999){if(set.has(p))return false;p=N(p)&&N(p).parent}return true});
+  const ok=tops.filter(id=>id!==target&&!desc(id).includes(target)),bad=tops.length-ok.length;
+  if(!ok.length){toast(tops.length>1?'None of these can go under that box: it’s one of their branches':'A box can’t go under its own branch');return}
+  const todo=ok.filter(id=>N(id).parent!==target);
+  if(!todo.length){toast('Already linked there');return}
+  todo.forEach(id=>{const n=N(id);n.parent=target;delete n.side});delete N(target).collapsed;
+  if(todo.length>1)nextLabel=`Linked ${todo.length} boxes under “${(N(target).title||'Untitled').slice(0,30)}”`;
+  render();renderPanel();save();
+  toast((todo.length>1?`Linked ${todo.length} boxes`:'Linked')+(bad?` (${bad} skipped: the target is one of their branches)`:''));
 }
 
 /* ---------- card clicks (checkboxes) ---------- */
@@ -967,7 +980,8 @@ canvas.addEventListener('pointerdown',e=>{
   if(lk&&pts.size===0){
     const id=lk.closest('.node').dataset.id;
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY});try{canvas.setPointerCapture(e.pointerId)}catch(_){}
-    g={type:'link',id,sx:e.clientX,sy:e.clientY,moved:false,over:null};return;
+    const ids=msel.size>1&&msel.has(id)?[...msel]:[id];
+    g={type:'link',id,ids,sx:e.clientX,sy:e.clientY,moved:false,over:null};return;
   }
   const rz=e.target.closest('.rsz');
   if(rz&&pts.size===0){
@@ -985,7 +999,7 @@ canvas.addEventListener('pointerdown',e=>{
   const ne=e.target.closest('.node');
   if(ne){
     const id=ne.dataset.id;
-    if(attachFrom){g={type:'attach',id};return}
+    if(attachFrom){g={type:'attach',id:[].concat(attachFrom).includes(id)?null:id};return}
     const base=msel.has(id)?[...msel]:[id];  // dragging a selected card moves the whole selection
     const ids=[...new Set(base.flatMap(i=>moveMode==='branch'?[i,...desc(i)]:[i]))];
     g={type:'drag',id,base,shift:e.shiftKey,sx:e.clientX,sy:e.clientY,orig:ids.map(i=>[i,N(i).x,N(i).y]),moved:false};
@@ -1132,10 +1146,10 @@ canvas.addEventListener('pointermove',e=>{
   }
   else if(g.type==='link'){
     // dashed line from the box to the pointer; highlight the box underneath
-    const cr=canvas.getBoundingClientRect(),v=S.view,src=rectOf(g.id);
-    const px=(e.clientX-cr.left-v.x)/v.k,py=(e.clientY-cr.top-v.y)/v.k,sx=src.x+src.w/2,sy=src.y+src.h/2;
-    guidesEl.innerHTML=`<path class="linkline" stroke-width="${2/v.k}" d="M${sx},${sy}L${px},${py}"/>`;
-    const under=document.elementFromPoint(e.clientX,e.clientY),ne=under&&under.closest('.node'),over=ne&&ne.dataset.id!==g.id?ne.dataset.id:null;
+    const cr=canvas.getBoundingClientRect(),v=S.view;
+    const px=(e.clientX-cr.left-v.x)/v.k,py=(e.clientY-cr.top-v.y)/v.k;
+    guidesEl.innerHTML=`<path class="linkline" stroke-width="${2/v.k}" d="${g.ids.map(i=>{const r=rectOf(i);return `M${r.x+r.w/2},${r.y+r.h/2}L${px},${py}`}).join('')}"/>`;
+    const under=document.elementFromPoint(e.clientX,e.clientY),ne=under&&under.closest('.node'),over=ne&&!g.ids.includes(ne.dataset.id)?ne.dataset.id:null;
     if(over!==g.over){if(g.over&&elMap[g.over])elMap[g.over].classList.remove('droptarget');if(over)elMap[over].classList.add('droptarget');g.over=over}
   }
   else if(g.type==='resize'){
@@ -1191,10 +1205,9 @@ function endPointer(e){
   else if(g.type==='resize'){if(g.moved){delete N(g.id)._new;g.srcs.forEach(o=>updateSide(o.id));render();renderPanel();save()}}
   else if(g.type==='link'){
     if(g.over&&elMap[g.over])elMap[g.over].classList.remove('droptarget');
-    attachFrom=g.id;
-    if(!g.moved){canvas.classList.add('attaching');toast('Tap the box to link it under, or empty space to cancel')}
+    attachFrom=g.ids.length>1?g.ids:g.id;
+    if(!g.moved){canvas.classList.add('attaching');toast(g.ids.length>1?`Tap the box to link these ${g.ids.length} under, or empty space to cancel`:'Tap the box to link it under, or empty space to cancel')}
     else if(!g.over){attachFrom=null;toast('Drop onto a box to link')}
-    else if(N(g.id).parent===g.over){attachFrom=null;toast('Already linked there')}
     else doAttach(g.over);
   }
   else if(g.type==='drag'){
