@@ -479,6 +479,26 @@ function repeatText(r){
     r.unit==='month'?`Every ${pl('month')}${r.dom?' on day '+r.dom:''}`:`Every ${pl('year')}`;
   return t+(r.from==='done'?', counted from when ticked':'');
 }
+/* ---------- email reminders ----------
+   n.notify = {to:[emails], days:[days before due], sent:{'<due>|<days>': ISO time}} — sent by the daily GitHub Action
+   (scripts/send-reminders.mjs), which marks what it sent so nothing goes out twice. */
+const EMAIL_RE=/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+const parseEmails=t=>[...new Set(String(t||'').split(/[\s,;]+/).map(x=>x.trim().toLowerCase()).filter(Boolean))];
+const parseDays=t=>[...new Set(String(t||'').split(/[\s,;]+/).map(x=>parseInt(x)).filter(x=>x>=0&&x<=365))].sort((a,b)=>b-a);
+function notifyText(n){
+  const f=n.notify;if(!f)return '';
+  const ds=(f.days||[]).map(d=>d===0?'on the day':d===1?'1 day before':`${d} days before`);
+  return `Email to ${(f.to||[]).length} recipient${(f.to||[]).length===1?'':'s'}${ds.length?', '+ds.join(', '):''}`;
+}
+function nextEmail(n){  // the next email the daily job would send, as {date, days}
+  const f=n.notify,t=parseDue(n.due);if(!f||!t||isNaN(t)||n.done||!(f.to||[]).length)return null;
+  const today=new Date();today.setHours(0,0,0,0);const due=new Date(t.getFullYear(),t.getMonth(),t.getDate());
+  if(due<today)return null;
+  const opts=(f.days||[]).filter(d=>!(f.sent||{})[n.due+'|'+d]).map(d=>({d,date:new Date(due.getFullYear(),due.getMonth(),due.getDate()-d)})).sort((a,b)=>a.date-b.date);
+  if(!opts.length)return null;
+  // a reminder day that has already passed goes out at the next daily run
+  return opts[0].date<today?{d:opts[0].d,date:today,catchup:true}:opts[0];
+}
 // tick a box: a repeating task rolls on to its next date instead of staying done
 function toggleDone(n){
   if(n.repeat&&!n.done){
@@ -541,7 +561,7 @@ function cardHTML(n){
   let prog='';
   const d=desc(n.id).map(N).filter(isTask);if(d.length)prog=`<span class="prog">${d.filter(x=>x.done).length} of ${d.length} done</span>`;
   if(n.items&&n.items.length)prog+=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
-  const rp=n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'';
+  const rp=(n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'')+(n.notify&&(n.notify.to||[]).length?`<span class="rep" title="${esc(notifyText(n))}">✉</span>`:'');
   const meta=(di||links||prog||rp)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${rp}${prog}${links}</div>`:'';
   return `<div class="node ${szClass(n)}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}${msel.size>1&&[...msel][0]===n.id?' ref':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
 <div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id?`<button class="isoh${focusId()===n.id?' on':''}" data-act="iso" title="${focusId()===n.id?'Stop isolating':'Isolate: show only this box and its branches'}" aria-label="Isolate this box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2"/></svg></button>`:''}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
@@ -791,6 +811,16 @@ function renderPanel(){
       <div class="row"><label class="tog"><input type="checkbox" id="pRepFrom" ${n.repeat.from==='done'?'checked':''}>Count from when I tick it</label></div>
       <div class="hint">${esc(repeatText(n.repeat))}.${nextDue(n)?` After this one: ${esc(dueInfo(nextDue(n,true)).label)}.`:''}</div>`:''}
     </div>
+    ${isTask(n)?`<div class="field"><span class="fl">Email reminder</span>
+      <div class="row"><label class="tog"><input type="checkbox" id="pNotify" ${n.notify?'checked':''}>Send email reminders</label></div>
+      ${n.notify?(()=>{const bad=(n.notify.to||[]).filter(e=>!EMAIL_RE.test(e)),ne=nextEmail(n);return `
+      <label class="fl" for="pNotifyTo">Send to</label>
+      <input class="inp" id="pNotifyTo" value="${esc((n.notify.to||[]).join(', '))}" placeholder="name@example.com, other@example.com" inputmode="email" autocomplete="off">
+      ${bad.length?`<div class="hint" style="color:var(--warn)">Doesn’t look like an email: ${esc(bad.join(', '))}</div>`:''}
+      <label class="fl" for="pNotifyDays">Days before the due date</label>
+      <input class="inp" id="pNotifyDays" value="${esc((n.notify.days||[]).join(', '))}" placeholder="e.g. 7, 1, 0" inputmode="numeric" autocomplete="off">
+      <div class="hint">${!n.due?'Add a due date so the reminder knows when to go out. ':''}0 means the morning of the due day; separate several with commas. Emails go out once a day at about 9:00 (Dubai time).${ne?` Next email: ${ne.catchup?'at the next daily run':esc(ne.date.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))}.`:''}</div>`})():''}
+    </div>`:''}
     <div class="field"><span class="fl">List</span>
       <div class="plist">${(n.items||[]).map(i=>`<div class="pitem"><button class="pchk ${i.done?'on':''}" data-act="pitem" data-item="${i.id}" aria-label="Toggle item"></button><input class="inp" data-itemtext="${i.id}" value="${esc(i.text)}"><button class="x" data-act="delitem" data-item="${i.id}" aria-label="Remove item">×</button></div>`).join('')}</div>
       <input class="inp" id="pNewItem" placeholder="Add an item, then press Enter">
@@ -817,6 +847,8 @@ panel.addEventListener('input',e=>{
   if(t.id==='mColor'){[...msel].map(N).filter(Boolean).forEach(n=>n.color=t.value);render();save();return}
   const n=N(sel);if(!n)return;
   if(t.id==='pColor'){n.color=t.value;render();save();return}
+  if(t.id==='pNotify'){if(t.checked)n.notify={to:[],days:[1],sent:{}};else delete n.notify;delete n._new;render();renderPanel();save();return}
+  if(t.id==='pNotifyTo'||t.id==='pNotifyDays')return;  // saved when the field is left (change event)
   if(t.id==='pRep'){
     if(t.checked){if(!n.due)n.due=dayKey(new Date());const d=parseDue(n.due);n.repeat={every:1,unit:'month',dom:d.getDate(),anchor:dayKey(d),days:[d.getDay()]};n.task=true;n.done=false}
     else delete n.repeat;
@@ -835,7 +867,12 @@ panel.addEventListener('input',e=>{
   else return;
   render();save();
 });
-panel.addEventListener('change',e=>{if(e.target.id==='pColor'||e.target.id==='mColor')renderPanel()});
+panel.addEventListener('change',e=>{
+  const t=e.target;if(t.id==='pColor'||t.id==='mColor'){renderPanel();return}
+  const n=N(sel);if(!n||!n.notify)return;
+  if(t.id==='pNotifyTo'){n.notify.to=parseEmails(t.value);render();renderPanel();save()}
+  else if(t.id==='pNotifyDays'){n.notify.days=parseDays(t.value);render();renderPanel();save()}
+});
 panel.addEventListener('keydown',e=>{
   const t=e.target,n=N(sel);if(!n)return;
   if(t.id==='pTitle'){
@@ -846,6 +883,7 @@ panel.addEventListener('keydown',e=>{
   }else if(t.id==='pNewLink'&&e.key==='Enter'&&t.value.trim()){
     e.preventDefault();n.links=n.links||[];n.links.push({url:t.value.trim(),label:''});delete n._new;render();save();renderPanel();$('#pNewLink').focus();
   }else if(t.dataset.itemtext&&e.key==='Enter'){e.preventDefault();$('#pNewItem').focus()}
+  else if((t.id==='pNotifyTo'||t.id==='pNotifyDays')&&e.key==='Enter'){e.preventDefault();t.blur()}
 });
 panel.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
@@ -1515,7 +1553,7 @@ function renderTasks(){
   const row=n=>{
     const di=dueInfo(n.due),path=pathOf(n),it=(n.items||[]).length?`${n.items.filter(i=>i.done).length}/${n.items.length} items`:'';
     const when=di?(di.cls==='over'||!di.hasTime?(di.cls==='over'?di.label:''):di.t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
-    const sub=[n.repeat?'↻ '+repeatText(n.repeat):'',path,it].filter(Boolean).join(' · ');
+    const sub=[n.repeat?'↻ '+repeatText(n.repeat):'',n.notify&&(n.notify.to||[]).length?'✉ '+notifyText(n):'',path,it].filter(Boolean).join(' · ');
     return `<div class="trow${n.color?' filled':''}${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${n.color?`--on:${onColor(n.color)}`:''}">
       <button class="tchk" data-act="tdone" aria-label="${n.done?'Mark not done':'Mark done'}"></button>
       <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${sub?`<div class="ts">${esc(sub)}</div>`:''}</div>
@@ -1665,6 +1703,7 @@ function describe(a,b){
   if(only('links'))return 'Edited links in '+who;
   if(only('due','alerted'))return 'Changed due date of '+who;
   if(only('repeat','task','done','due'))return 'Changed repeat of '+who;
+  if(only('notify'))return 'Changed email reminder of '+who;
   return 'Edited '+who;
 }
 function goTo(i){

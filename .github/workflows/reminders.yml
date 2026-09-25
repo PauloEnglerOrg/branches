@@ -1,0 +1,22 @@
+name: Email reminders
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # every day at 05:00 UTC = 09:00 in Dubai
+  workflow_dispatch:       # "Run workflow" button for a manual run
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --prefix scripts --no-audit --no-fund
+      - run: node scripts/send-reminders.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TZ_NAME: Asia/Dubai
