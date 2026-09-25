@@ -62,6 +62,14 @@ button{cursor:pointer}
 .node .title{white-space:pre-wrap;overflow-wrap:anywhere;flex:1}
 .node .ph{color:var(--muted);font-style:italic}
 .node.sel{outline:2px solid var(--accent);outline-offset:3px;z-index:3}
+.node.sm1{max-width:170px;min-width:60px;padding:4px 7px 5px;border-radius:7px}.node.sm1 .title{font-size:9.5px;line-height:1.3;font-weight:500}
+.node.s0{max-width:190px;min-width:84px;padding:6px 9px 7px;border-radius:8px}.node.s0 .title{font-size:11px;line-height:1.3;font-weight:500}
+.node.sm1 .head{gap:5px}.node.s0 .head{gap:7px}
+.node.sm1 .chk{width:11px;height:11px;border-width:1.5px;margin-top:0}.node.s0 .chk{width:14px;height:14px;margin-top:0}
+.node.sm1 .items,.node.sm1 .meta{font-size:9.5px;margin-top:4px}.node.s0 .items,.node.s0 .meta{font-size:11px;margin-top:6px}
+.node.sm1 .due,.node.s0 .due{padding:1px 6px}
+.node.sm1 .ichk{width:9px;height:9px;margin-top:1px;border-width:1.2px}.node.s0 .ichk{width:11px;height:11px;margin-top:1px}
+.node.sm1 .items{gap:2px}.node.sm1 .items li{gap:5px}
 .node.s1{max-width:220px}.node.s1 .title{font-size:13px;line-height:1.3;font-weight:500}
 .node.s2{max-width:260px}.node.s2 .title{font-size:16px;line-height:1.3;font-weight:500}
 .node.s3{max-width:320px;padding:12px 16px 13px}.node.s3 .title{font-size:24px;line-height:1.15;font-weight:600;letter-spacing:-.01em}
@@ -521,6 +529,10 @@ function seed(){
 }
 
 /* ---------- render ---------- */
+// text sizes: -1 XXS, 0 XS, 1 S, 2 M (default), 3 L, 4 XL
+const SIZES=[[-1,'XXS'],[0,'XS'],[1,'S'],[2,'M'],[3,'L'],[4,'XL']];
+const sizeOf=n=>n.size??2;
+const szClass=n=>{const v=sizeOf(n);return v<0?'sm'+(-v):'s'+v};
 function cardHTML(n){
   const col=n.color||'';
   const items=(n.items||[]).map(i=>`<li class="${i.done?'done':''}"><button class="ichk ${i.done?'on':''}" data-act="item" data-item="${i.id}" aria-label="Toggle item"></button><span>${esc(i.text)||'&nbsp;'}</span></li>`).join('');
@@ -531,7 +543,7 @@ function cardHTML(n){
   if(n.items&&n.items.length)prog+=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
   const rp=n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'';
   const meta=(di||links||prog||rp)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${rp}${prog}${links}</div>`:'';
-  return `<div class="node s${n.size||2}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}${msel.size>1&&[...msel][0]===n.id?' ref':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
+  return `<div class="node ${szClass(n)}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}${msel.size>1&&[...msel][0]===n.id?' ref':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
 <div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id?`<button class="isoh${focusId()===n.id?' on':''}" data-act="iso" title="${focusId()===n.id?'Stop isolating':'Isolate: show only this box and its branches'}" aria-label="Isolate this box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2"/></svg></button>`:''}${sel===n.id?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
 function foldHTML(n){
@@ -704,12 +716,12 @@ function toggleMulti(id){
   sel=null;closeDue();render();renderPanel();
 }
 function renderMultiPanel(){
-  const ns=[...msel].map(N),sz=ns.every(n=>(n.size||2)===(ns[0].size||2))?(ns[0].size||2):0;
+  const ns=[...msel].map(N),sz=ns.every(n=>sizeOf(n)===sizeOf(ns[0]))?sizeOf(ns[0]):null;
   panel.innerHTML=`
   <div class="top"><span>${ns.length} cards selected</span><button class="x" data-act="close" aria-label="Clear selection">×</button></div>
   <div class="body">
     <div class="field"><span class="fl">Text size</span>
-      <div class="row"><div class="seg">${[1,2,3,4].map(s=>`<button data-act="msize" data-v="${s}" class="${sz===s?'on':''}">${['S','M','L','XL'][s-1]}</button>`).join('')}</div></div>
+      <div class="row"><div class="seg">${SIZES.map(([s,l])=>`<button data-act="msize" data-v="${s}" class="${sz===s?'on':''}">${l}</button>`).join('')}</div></div>
     </div>
     <div class="field"><span class="fl">Box size</span>
       <div class="row"><button class="btn" data-act="mmatch" style="border:1px solid var(--line);background:var(--card)">Match size to “${esc((ns[0].title||'Untitled').slice(0,24))}”</button></div>
@@ -752,7 +764,7 @@ function renderPanel(){
       <div class="hint"><kbd>Enter</kbd> adds a box below · <kbd>Tab</kbd> adds a branch · <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back up</div>
     </div>
     <div class="field"><span class="fl">Text size</span>
-      <div class="row"><div class="seg">${[1,2,3,4].map(s=>`<button data-act="size" data-v="${s}" class="${(n.size||2)===s?'on':''}">${['S','M','L','XL'][s-1]}</button>`).join('')}</div></div>
+      <div class="row"><div class="seg">${SIZES.map(([s,l])=>`<button data-act="size" data-v="${s}" class="${sizeOf(n)===s?'on':''}">${l}</button>`).join('')}</div></div>
       <div class="hint">Drag the square on the card’s corner to resize the box.${n.w||n.h?` <button class="btn" data-act="resetSize" style="height:26px;padding:0 8px;border:1px solid var(--line);background:var(--card);font-size:12px">Reset box size</button>`:''}</div>
     </div>
     <div class="field"><span class="fl">Task</span>
@@ -1052,20 +1064,20 @@ canvas.addEventListener('pointermove',e=>{
   }
   else if(g.type==='resize'){
     const k=S.view.k,n=N(g.id),el=elMap[g.id];if(!n||!el)return;
-    let w=Math.max(120,g.ow+dx/k),h=Math.max(36,g.oh+dy/k),segs=[];
+    let w=Math.max(60,g.ow+dx/k),h=Math.max(20,g.oh+dy/k),segs=[];
     if(!e.altKey){  // snap the right and bottom edges to other cards' edges and centres
       if(!g.snap)g.snap=snapPrep(new Set([g.id,...g.group.map(o=>o.id)]),g.id);
       const T=7/k,near=(v,list)=>{let b=null;for(const a of list)if(Math.abs(a-v)<=T&&(b===null||Math.abs(a-v)<Math.abs(b-v)))b=a;return b};
       const xs=g.snap.refs.flatMap(f=>[f.x,f.x+f.w/2,f.x+f.w]),ys=g.snap.refs.flatMap(f=>[f.y,f.y+f.h/2,f.y+f.h]);
       const bx=near(n.x+w,xs),by=near(n.y+h,ys);
-      if(bx!==null&&bx-n.x>=120){w=bx-n.x;const hit=g.snap.refs.filter(f=>[f.x,f.x+f.w/2,f.x+f.w].some(v=>Math.abs(v-bx)<.6)),yy=[n.y,n.y+h,...hit.flatMap(f=>[f.y,f.y+f.h])];segs.push([bx,Math.min(...yy)-8,bx,Math.max(...yy)+8])}
-      if(by!==null&&by-n.y>=36){h=by-n.y;const hit=g.snap.refs.filter(f=>[f.y,f.y+f.h/2,f.y+f.h].some(v=>Math.abs(v-by)<.6)),xx=[n.x,n.x+w,...hit.flatMap(f=>[f.x,f.x+f.w])];segs.push([Math.min(...xx)-8,by,Math.max(...xx)+8,by])}
+      if(bx!==null&&bx-n.x>=60){w=bx-n.x;const hit=g.snap.refs.filter(f=>[f.x,f.x+f.w/2,f.x+f.w].some(v=>Math.abs(v-bx)<.6)),yy=[n.y,n.y+h,...hit.flatMap(f=>[f.y,f.y+f.h])];segs.push([bx,Math.min(...yy)-8,bx,Math.max(...yy)+8])}
+      if(by!==null&&by-n.y>=20){h=by-n.y;const hit=g.snap.refs.filter(f=>[f.y,f.y+f.h/2,f.y+f.h].some(v=>Math.abs(v-by)<.6)),xx=[n.x,n.x+w,...hit.flatMap(f=>[f.x,f.x+f.w])];segs.push([Math.min(...xx)-8,by,Math.max(...xx)+8,by])}
     }
     n.w=Math.round(w);if(Math.abs(dy)>2||n.h)n.h=Math.round(h);
     el.style.width=n.w+'px';el.style.maxWidth='none';if(n.h)el.style.minHeight=n.h+'px';
     const dw=w-g.ow,dh=h-g.oh;
     for(const o of g.group){const m=N(o.id),me=elMap[o.id];if(!m||!me)continue;
-      m.w=Math.round(Math.max(120,o.ow+dw));if(Math.abs(dy)>2||m.h)m.h=Math.round(Math.max(36,o.oh+dh));
+      m.w=Math.round(Math.max(60,o.ow+dw));if(Math.abs(dy)>2||m.h)m.h=Math.round(Math.max(20,o.oh+dh));
       me.style.width=m.w+'px';me.style.maxWidth='none';if(m.h)me.style.minHeight=m.h+'px'}
     drawGuides(segs);drawEdges();
   }
