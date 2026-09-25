@@ -553,13 +553,18 @@ function foldHTML(n){
   const hid=desc(n.id).length,label=n.collapsed?`Show ${hid} hidden card${hid>1?'s':''}`:'Collapse this branch';
   return `<button class="fold ${side}" data-act="fold" aria-label="${label}" title="${label}">${n.collapsed?'+':'−'}</button>`;
 }
+// render without pushing stacked boxes (undo/redo, changes from another device, and flows that place boxes themselves)
+let quietRender=false;
+function renderQuiet(){quietRender=true;try{render()}finally{quietRender=false}}
 function render(){
   if(editing){renderLater=true;return}  // don't wipe a card while its text is being typed in place
   while(focusStack.length&&!N(focusId()))focusStack.pop();  // the isolated box was deleted
   for(const id of msel)if(!N(id)||hiddenNode(id)||!inFocus(id))msel.delete(id);
   renderFocusBar();
+  const prevH={};if(!quietRender)for(const id in elMap)prevH[id]=elMap[id].offsetHeight;
   nodesEl.innerHTML=visible().map(cardHTML).join('');
   elMap={};nodesEl.querySelectorAll('.node').forEach(e=>elMap[e.dataset.id]=e);
+  if(!quietRender&&!g)autoFollow(prevH);
   drawEdges();updateBadge();
   $('#empty').hidden=all().length>0||view!=='branches';
   if(view!=='branches')renderView();
@@ -880,7 +885,7 @@ panel.addEventListener('click',e=>{
     else if(a==='mnotask')ns.forEach(n=>{n.task=false;n.done=false});
     else if(a==='mdone')ns.forEach(n=>{n.task=true;if(n.repeat)toggleDone(n);else n.done=true});
     else if(a==='mundone')ns.forEach(n=>n.done=false);
-    if(fp){render();applyFollow(fp)}
+    if(fp){renderQuiet();applyFollow(fp)}
     render();renderPanel();save();return;
   }
   const n=N(sel);if(!n)return;
@@ -888,7 +893,7 @@ panel.addEventListener('click',e=>{
   else if(a==='size'||a==='resetSize'){
     const fp=followPlan([n.id]);
     if(a==='size'){n.size=+b.dataset.v;delete n._new}else{delete n.w;delete n.h}
-    render();applyFollow(fp);render();renderPanel();save()}
+    renderQuiet();applyFollow(fp);render();renderPanel();save()}
   else if(a==='color'){if(b.dataset.v)n.color=b.dataset.v;else delete n.color;render();renderPanel();save()}
   else if(a==='repday'){const r=n.repeat,v=+b.dataset.v,ds=new Set(r.days||[]);ds.has(v)?ds.delete(v):ds.add(v);if(ds.size)r.days=[...ds];render();renderPanel();save()}
   else if(a==='toggleDone'){toggleDone(n);render();renderPanel();save()}
@@ -930,11 +935,12 @@ let editing=null,editEl=null,editOrig='',renderLater=false,lastTap={};
 function startEdit(id){
   const n=N(id),el=elMap[id]&&elMap[id].querySelector('.title');if(!n||!el)return;
   editing=id;editEl=el;editOrig=n.title||'';renderLater=false;
+  const efp=followPlan([id]);
   el.textContent=n.title||'';
   try{el.contentEditable='plaintext-only'}catch(_){el.contentEditable='true'}
   el.focus();
   const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);
-  el.addEventListener('input',()=>{n.title=el.innerText.replace(/\n$/,'');if(n.title)delete n._new;const t=$('#pTitle');if(t)t.value=n.title;drawEdges();save()});
+  el.addEventListener('input',()=>{n.title=el.innerText.replace(/\n$/,'');if(n.title)delete n._new;const t=$('#pTitle');if(t)t.value=n.title;applyFollow(efp);drawEdges();save()});
   el.addEventListener('keydown',e=>{
     if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();el.blur()}
     else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();n.title=editOrig;el.blur()}
@@ -992,13 +998,28 @@ canvas.addEventListener('pointerdown',e=>{
 });
 /* ---------- boxes stacked under a box follow it when it moves or changes height, so the gaps in a column are kept ---------- */
 const STACK_GAP=64;
-function stackUnder(src,skip){
-  const rs=Object.keys(elMap).filter(i=>!skip.has(i)).map(i=>({id:i,...rectOf(i)}));
+// boxes under `src`: overlapping it horizontally, starting below its top, and no more than STACK_GAP below its bottom
+// (overlapping boxes count too). H optionally gives heights to use instead of the current ones.
+function stackUnder(src,skip,H){
+  const rr=i=>{const r=rectOf(i);if(H&&H[i]!=null)r.h=H[i];return r};
+  const rs=Object.keys(elMap).filter(i=>!skip.has(i)).map(i=>({id:i,...rr(i)}));
   const out=new Set(),q=[src];
-  while(q.length){const a=rectOf(q.shift());
-    for(const b of rs){if(out.has(b.id))continue;const gap=b.y-(a.y+a.h);
-      if(b.x<a.x+a.w-4&&a.x<b.x+b.w-4&&gap>=-4&&gap<=STACK_GAP){out.add(b.id);q.push(b.id)}}}
+  while(q.length){const a=rr(q.shift());
+    for(const b of rs){if(out.has(b.id)||b.id===src)continue;
+      if(b.x<a.x+a.w-4&&a.x<b.x+b.w-4&&b.y>=a.y+8&&b.y-(a.y+a.h)<=STACK_GAP){out.add(b.id);q.push(b.id)}}}
   return out;
+}
+// after a render: any box whose height changed pushes the boxes stacked under it (found with the old heights)
+function autoFollow(prevH){
+  const changed=Object.keys(prevH).filter(id=>elMap[id]&&Math.abs(elMap[id].offsetHeight-prevH[id])>1);
+  if(!changed.length)return;
+  const shift=new Map();
+  for(const s of changed){
+    const d=elMap[s].offsetHeight-prevH[s],st=stackUnder(s,new Set([s]),prevH),mv=new Set(st);
+    if(moveMode==='branch')st.forEach(i=>desc(i).forEach(x=>{if(x!==s)mv.add(x)}));
+    mv.forEach(i=>shift.set(i,(shift.get(i)||0)+d));
+  }
+  for(const [i,d] of shift){const n=N(i);if(!n)continue;n.y=Math.round(n.y+d);const el=elMap[i];if(el)el.style.top=n.y+'px'}
 }
 // before changing boxes `srcs`: note who is stacked under each (plus their branches in Branch mode) and where things were
 function followPlan(srcs){
@@ -1336,7 +1357,7 @@ function onRemote(snap){
       }else if(!known)toast('Signed in. Your synced board is loaded.');
       checkpoint();S.nodes=remote;synced={};for(const id in remote)synced[id]=canon(remote[id]);
       if(sel&&!N(sel)){sel=null;closePanel()}
-      render();if(!known)fit();save();nextLabel='Loaded your synced board';checkpoint();
+      renderQuiet();if(!known)fit();save();nextLabel='Loaded your synced board';checkpoint();
     }
   }else{
     let changed=false;checkpoint();
@@ -1350,7 +1371,7 @@ function onRemote(snap){
       if(pending||(local&&canon(clean(local))===s))continue;  // unsent local edit wins; identical needs nothing
       S.nodes[id]=d;changed=true;
     }
-    if(changed){render();if(sel&&!panel.contains(document.activeElement))renderPanel();save();nextLabel='Changes from another device';checkpoint()}
+    if(changed){renderQuiet();if(sel&&!panel.contains(document.activeElement))renderPanel();save();nextLabel='Changes from another device';checkpoint()}
   }
   setSync(m.hasPendingWrites?'saving':m.fromCache?'offline':'ok');
   renderSyncBox();
@@ -1608,7 +1629,7 @@ function goTo(i){
   if(i<0||i>=hist.length||i===hi)return;
   hi=i;S.nodes=JSON.parse(hist[i].json);
   if(sel&&!N(sel)){sel=null;closePanel()}
-  render();if(sel||msel.size)renderPanel();save();updateHistUI();
+  renderQuiet();if(sel||msel.size)renderPanel();save();updateHistUI();
 }
 function undo(){checkpoint();goTo(hi-1)}
 function redo(){goTo(hi+1)}
