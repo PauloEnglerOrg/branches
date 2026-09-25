@@ -66,6 +66,9 @@ button{cursor:pointer}
 .node.root .ph{color:rgba(255,255,255,.75)}
 .node.done .title{text-decoration:line-through;text-decoration-thickness:1.5px;color:var(--muted)}
 .node.done{opacity:.72}
+.node .title[contenteditable]{user-select:text;-webkit-user-select:text;cursor:text;outline:none;min-width:2ch}
+.node .title[contenteditable]:empty::before{content:"Untitled";color:var(--muted);font-style:italic}
+.node.root .title[contenteditable]:empty::before{color:rgba(255,255,255,.75)}
 
 .chk{flex:none;width:18px;height:18px;margin-top:1px;border-radius:50%;border:2px solid var(--c);background:transparent;padding:0;position:relative}
 .node.s3 .chk{margin-top:5px}.node.s4 .chk{margin-top:10px;width:22px;height:22px}
@@ -311,6 +314,7 @@ function cardHTML(n){
 <div class="head">${isRoot?'':`<button class="chk" data-act="done" aria-label="Mark done"></button>`}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}</div>`;
 }
 function render(){
+  if(editing)return;  // don't wipe a card while its text is being typed in place; finishEdit re-renders
   nodesEl.innerHTML=all().map(cardHTML).join('');
   elMap={};nodesEl.querySelectorAll('.node').forEach(e=>elMap[e.dataset.id]=e);
   drawEdges();updateBadge();
@@ -498,10 +502,32 @@ nodesEl.addEventListener('click',e=>{
   render();if(sel===id)renderPanel();save();
 });
 
+/* ---------- edit a card's text in place (double-click / double-tap) ---------- */
+let editing=null,editOrig='',lastTap={};
+function startEdit(id){
+  const n=N(id),el=elMap[id]&&elMap[id].querySelector('.title');if(!n||!el)return;
+  editing=id;editOrig=n.title||'';
+  el.textContent=n.title||'';
+  try{el.contentEditable='plaintext-only'}catch(_){el.contentEditable='true'}
+  el.focus();
+  const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);
+  el.addEventListener('input',()=>{n.title=el.innerText.replace(/\n$/,'');if(n.title)delete n._new;const t=$('#pTitle');if(t)t.value=n.title;drawEdges();save()});
+  el.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();el.blur()}
+    else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();n.title=editOrig;el.blur()}
+  });
+  el.addEventListener('blur',finishEdit,{once:true});
+}
+function finishEdit(){
+  if(!editing)return;editing=null;
+  render();if(sel)renderPanel();save();
+}
+
 /* ---------- pointer: pan, drag, pinch ---------- */
 const pts=new Map();let g=null;
 canvas.addEventListener('pointerdown',e=>{
-  if(e.target.closest('button,a'))return;
+  if(e.target.closest('button,a,[contenteditable]'))return;
+  if(editing)finishEdit();
   pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{canvas.setPointerCapture(e.pointerId)}catch(_){}
   if(pts.size===2){const [a,b]=[...pts.values()];g={type:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),mx:(a.x+b.x)/2,my:(a.y+b.y)/2};return}
@@ -537,7 +563,12 @@ function endPointer(e){
   if(!g)return;
   if(g.type==='pinch'){if(pts.size===0)g=null;else g={type:'none'};save();return}
   if(g.type==='attach'){doAttach(g.id)}
-  else if(g.type==='drag'){if(g.moved)save();if(sel!==g.id)select(g.id);else if(!g.moved)renderPanel()}
+  else if(g.type==='drag'){if(g.moved)save();
+    const id=g.id,now=Date.now(),dbl=!g.moved&&lastTap.id===id&&now-lastTap.t<400;
+    lastTap=g.moved||dbl?{}:{id,t:now};
+    if(sel!==id)select(id);else if(!g.moved)renderPanel();
+    if(dbl)startEdit(id);
+  }
   else if(g.type==='pan'){canvas.classList.remove('panning');if(g.moved)save();else if(attachFrom)doAttach(null);else if(sel)deselect()}
   g=null;
 }
@@ -630,7 +661,7 @@ function toast(msg,act,fn){
 
 /* ---------- keyboard ---------- */
 document.addEventListener('keydown',e=>{
-  const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable;
   if(e.key==='Escape'){
     if(attachFrom){attachFrom=null;canvas.classList.remove('attaching');toast('Attach cancelled');return}
     if(!$('#modal').hidden){$('#modal').hidden=true;return}
