@@ -408,6 +408,7 @@ function addChild(pid){
   return create({parent:pid,x,y,size:Math.min(size,2)});
 }
 function addChildDir(pid,dir){
+  if(editing)finishEdit();
   if(dir==='r'){const id=addChild(pid);N(id).side='r';return id}
   const p=N(pid),pw=elMap[pid]?elMap[pid].offsetWidth:200,ph=height(pid);
   const size=Math.min(p.parent?Math.min(p.size||2,2):Math.max(1,(p.size||3)-1),2);
@@ -425,9 +426,9 @@ function addChildDir(pid,dir){
   }
   const id=create({parent:pid,x:Math.round(x),y:Math.round(y),size,side:dir});
   render();  // measure the new card, then line it up against the side it grew from
-  const n=N(id);
-  if(alignRight!==null)n.x=Math.round(alignRight-elMap[id].offsetWidth);
-  if(alignBottom!==null)n.y=Math.round(alignBottom-elMap[id].offsetHeight);
+  const n=N(id),el=elMap[id];
+  if(el&&alignRight!==null)n.x=Math.round(alignRight-el.offsetWidth);
+  if(el&&alignBottom!==null)n.y=Math.round(alignBottom-el.offsetHeight);
   return id;
 }
 function addSibling(id){
