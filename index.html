@@ -1588,11 +1588,11 @@ function renderTasks(){
     const sub=[path,it].filter(Boolean).join(' · ');
     return `<div class="trow${n.color?' filled':''}${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${n.color?`--on:${onColor(shown(n))}`:''}">
       <button class="tchk" data-act="tdone" aria-label="${n.done?'Mark not done':'Mark done'}"></button>
-      <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${di||sub?`<div class="tsub">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${sub?`<span class="ts">${esc(sub)}</span>`:''}</div>`:''}</div>
+      <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${di||sub?`<div class="tsub">${di?`<span class="due ${di.cls}">${['SUN','MON','TUE','WED','THU','FRI','SAT'][di.t.getDay()]} ${esc(di.label)}</span>`:''}${sub?`<span class="ts">${esc(sub)}</span>`:''}</div>`:''}</div>
       <button class="tgo" data-act="tgo" title="Show on the board" aria-label="Show on the board">↗</button></div>`;
   };
   const keys=[...groups.keys()].sort();
-  let html=keys.map(k=>{const g=groups.get(k);return `<div class="tgrp"><h3 class="${g.cls}">${esc(g.label)} <span style="font-weight:400">· ${g.items.length}</span></h3>${g.items.map(row).join('')}</div>`}).join('');
+  let html=`<div class="tgrp">${keys.flatMap(k=>groups.get(k).items).map(row).join('')}</div>`;
   if(done.length)html+=`<div class="tgrp"><button class="tdone" data-act="tshowdone">${showDone?'▾':'▸'} Done · ${done.length}</button>${showDone?done.map(row).join(''):''}</div>`;
   if(!tasks.length)html=`<div class="tempty">No tasks yet.<br><span style="font-size:14px">Open a box and switch on “It’s a task”, or press New box here to add one.</span></div>`;
   listEl.innerHTML=`<div class="tl">${html}</div>`;
