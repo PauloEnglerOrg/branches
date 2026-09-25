@@ -561,10 +561,10 @@ function render(){
   while(focusStack.length&&!N(focusId()))focusStack.pop();  // the isolated box was deleted
   for(const id of msel)if(!N(id)||hiddenNode(id)||!inFocus(id))msel.delete(id);
   renderFocusBar();
-  const prevH={};if(!quietRender)for(const id in elMap)prevH[id]=elMap[id].offsetHeight;
+  const prevH={},prevW={};if(!quietRender)for(const id in elMap){prevH[id]=elMap[id].offsetHeight;prevW[id]=elMap[id].offsetWidth}
   nodesEl.innerHTML=visible().map(cardHTML).join('');
   elMap={};nodesEl.querySelectorAll('.node').forEach(e=>elMap[e.dataset.id]=e);
-  if(!quietRender&&!g)autoFollow(prevH);
+  if(!quietRender&&!g)autoFollow(prevH,prevW);
   drawEdges();updateBadge();
   $('#empty').hidden=all().length>0||view!=='branches';
   if(view!=='branches')renderView();
@@ -996,49 +996,57 @@ canvas.addEventListener('pointerdown',e=>{
     }else g={type:'pan',sx:e.clientX,sy:e.clientY,vx:S.view.x,vy:S.view.y,moved:false};
   }
 });
-/* ---------- boxes stacked under a box follow it when it moves or changes height, so the gaps in a column are kept ---------- */
-const STACK_GAP=64;
-// boxes under `src`: overlapping it horizontally, starting below its top, and no more than STACK_GAP below its bottom
-// (overlapping boxes count too). H optionally gives heights to use instead of the current ones.
-function stackUnder(src,skip,H){
-  const rr=i=>{const r=rectOf(i);if(H&&H[i]!=null)r.h=H[i];return r};
-  const rs=Object.keys(elMap).filter(i=>!skip.has(i)).map(i=>({id:i,...rr(i)}));
+/* ---------- keeping the layout when a box changes size or moves ----------
+   Followers of a box: its own branches below it (follow its bottom edge) or to its right (follow its right edge),
+   whatever the distance, plus unconnected boxes stacked directly under it (and, in Branch mode, their branches). */
+const STACK_GAP=96;
+function rectWith(i,H,W){const r=rectOf(i);if(H&&H[i]!=null)r.h=H[i];if(W&&W[i]!=null)r.w=W[i];return r}
+// boxes under `src`: overlapping it horizontally, starting below its top, at most STACK_GAP below its bottom (overlaps count)
+function stackUnder(src,skip,H,W){
+  const rs=Object.keys(elMap).filter(i=>!skip.has(i)).map(i=>({id:i,...rectWith(i,H,W)}));
   const out=new Set(),q=[src];
-  while(q.length){const a=rr(q.shift());
+  while(q.length){const a=rectWith(q.shift(),H,W);
     for(const b of rs){if(out.has(b.id)||b.id===src)continue;
       if(b.x<a.x+a.w-4&&a.x<b.x+b.w-4&&b.y>=a.y+8&&b.y-(a.y+a.h)<=STACK_GAP){out.add(b.id);q.push(b.id)}}}
   return out;
 }
-// after a render: any box whose height changed pushes the boxes stacked under it (found with the old heights)
-function autoFollow(prevH){
-  const changed=Object.keys(prevH).filter(id=>elMap[id]&&Math.abs(elMap[id].offsetHeight-prevH[id])>1);
-  if(!changed.length)return;
-  const shift=new Map();
-  for(const s of changed){
-    const d=elMap[s].offsetHeight-prevH[s],st=stackUnder(s,new Set([s]),prevH),mv=new Set(st);
-    if(moveMode==='branch')st.forEach(i=>desc(i).forEach(x=>{if(x!==s)mv.add(x)}));
-    mv.forEach(i=>shift.set(i,(shift.get(i)||0)+d));
-  }
-  for(const [i,d] of shift){const n=N(i);if(!n)continue;n.y=Math.round(n.y+d);const el=elMap[i];if(el)el.style.top=n.y+'px'}
+// Map follower id -> [x edge it follows ('left'|'right'), y edge it follows ('top'|'bottom')]
+function followersOf(s,skip,H,W){
+  const out=new Map(),r=rectWith(s,H,W),bottom=r.y+r.h,right=r.x+r.w;
+  const add=(i,xm,ym)=>{if(i!==s&&!skip.has(i)&&!out.has(i)&&N(i))out.set(i,[xm,ym])};
+  for(const d of desc(s)){const q=rectWith(d,H,W),below=q.y>=bottom-4,ro=q.x>=right-4;if(below||ro)add(d,ro?'right':'left',below?'bottom':'top')}
+  const st=stackUnder(s,skip,H,W);st.forEach(i=>add(i,'left','bottom'));
+  if(moveMode==='branch')st.forEach(i=>desc(i).forEach(d=>add(d,'left','bottom')));
+  return out;
 }
-// before changing boxes `srcs`: note who is stacked under each (plus their branches in Branch mode) and where things were
+// before changing boxes `srcs`: note their followers and where everything was
 function followPlan(srcs){
   const skip=new Set(srcs),plan=new Map();
-  for(const s of srcs){
-    const st=stackUnder(s,skip),add=i=>{if(!skip.has(i)&&!plan.has(i)&&N(i))plan.set(i,{s,ox:N(i).x,oy:N(i).y})};
-    st.forEach(add);if(moveMode==='branch')st.forEach(i=>desc(i).forEach(add));
-  }
-  const base=Object.fromEntries(srcs.map(s=>{const r=rectOf(s);return [s,{x:r.x,b:r.y+r.h}]}));
+  for(const s of srcs)for(const [i,m] of followersOf(s,skip))if(!plan.has(i))plan.set(i,{s,ox:N(i).x,oy:N(i).y,m});
+  const base=Object.fromEntries(srcs.map(s=>{const r=rectOf(s);return [s,{x:r.x,y:r.y,r:r.x+r.w,b:r.y+r.h}]}));
   return {plan,base};
 }
-// after the change: move each follower by its box's horizontal shift and bottom-edge shift
+// after the change: move each follower by the shift of the edge it follows
 function applyFollow(fp){
-  for(const [i,{s,ox,oy}] of fp.plan){
+  for(const [i,{s,ox,oy,m}] of fp.plan){
     const n=N(i),b=fp.base[s];if(!n||!N(s))continue;const r=rectOf(s);
-    n.x=Math.round(ox+(r.x-b.x));n.y=Math.round(oy+(r.y+r.h-b.b));
+    n.x=Math.round(ox+(m[0]==='right'?r.x+r.w-b.r:r.x-b.x));n.y=Math.round(oy+(m[1]==='bottom'?r.y+r.h-b.b:r.y-b.y));
     const el=elMap[i];if(el){el.style.left=n.x+'px';el.style.top=n.y+'px'}
   }
   fp.plan.forEach((_,i)=>updateSide(i));
+}
+// after a render: boxes whose size changed (typing, checklist, text size...) push their followers; found with the old sizes
+function autoFollow(prevH,prevW){
+  const changed=Object.keys(prevH).filter(id=>elMap[id]&&(Math.abs(elMap[id].offsetHeight-prevH[id])>1||Math.abs(elMap[id].offsetWidth-prevW[id])>1));
+  if(!changed.length)return;
+  const shift=new Map();
+  for(const s of changed){
+    const dh=elMap[s].offsetHeight-prevH[s],dw=elMap[s].offsetWidth-prevW[s];
+    for(const [i,[xm,ym]] of followersOf(s,new Set([s]),prevH,prevW)){
+      const d=shift.get(i)||[0,0];if(xm==='right')d[0]+=dw;if(ym==='bottom')d[1]+=dh;shift.set(i,d);
+    }
+  }
+  for(const [i,[dx,dy]] of shift){if(!dx&&!dy)continue;const n=N(i);if(!n)continue;n.x=Math.round(n.x+dx);n.y=Math.round(n.y+dy);const el=elMap[i];if(el){el.style.left=n.x+'px';el.style.top=n.y+'px'}}
 }
 
 /* ---------- snapping while dragging: edges, centres and matching gaps (hold Alt/Option to place freely) ---------- */
