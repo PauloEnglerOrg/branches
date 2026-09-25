@@ -10,7 +10,7 @@
 <style>
 :root{
   --paper:#E3E6E9; --dot:#BFC5CB; --card:#FBFCFC; --ink:#1B2025; --muted:#66707A; --line:#D0D5DA;
-  --accent:#2E57E6; --warn:#CF3429; --soon:#A86A12; --panel:#F5F6F7; --hover:#E9ECEF; --guide:#E0356E;
+  --accent:#2E57E6; --warn:#CF3429; --soon:#A86A12; --panel:#F5F6F7; --hover:#E9ECEF; --guide:#E0356E; --edge:#3A4148;
   --shadow:0 1px 0 rgba(27,32,37,.05),0 8px 20px -10px rgba(27,32,37,.35);
   color-scheme:light;
   box-sizing:border-box;
@@ -20,14 +20,14 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --paper:#14171A; --dot:#2A3036; --card:#1F2328; --ink:#E6E9EC; --muted:#8C96A0; --line:#31373E;
-    --accent:#809DFF; --warn:#FF6A5C; --soon:#E2A94B; --panel:#1A1D21; --hover:#262B31; --guide:#FF5C93;
+    --accent:#809DFF; --warn:#FF6A5C; --soon:#E2A94B; --panel:#1A1D21; --hover:#262B31; --guide:#FF5C93; --edge:#FFFFFF;
     --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 24px -10px rgba(0,0,0,.7);
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --paper:#14171A; --dot:#2A3036; --card:#1F2328; --ink:#E6E9EC; --muted:#8C96A0; --line:#31373E;
-  --accent:#809DFF; --warn:#FF6A5C; --soon:#E2A94B; --panel:#1A1D21; --hover:#262B31; --guide:#FF5C93;
+  --accent:#809DFF; --warn:#FF6A5C; --soon:#E2A94B; --panel:#1A1D21; --hover:#262B31; --guide:#FF5C93; --edge:#FFFFFF;
   --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 24px -10px rgba(0,0,0,.7);
   color-scheme:dark;
 }
@@ -50,9 +50,9 @@ button{cursor:pointer}
 #canvas.attaching,#canvas.attaching .node{cursor:crosshair}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #edges{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none}
-#edges path{fill:none;stroke-width:2.2;stroke-linecap:round}
+#edges path{fill:none;stroke:var(--edge);stroke-width:2.2;stroke-linecap:round}
 #edges path.done{stroke-dasharray:3 6;opacity:.55}
-#edges circle{stroke:none}
+#edges circle{stroke:none;fill:var(--edge)}
 #guides{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none}
 #guides path{fill:none;stroke:var(--guide)}
 
@@ -62,13 +62,19 @@ button{cursor:pointer}
 .node .head{display:flex;gap:9px;align-items:flex-start}
 .node .title{white-space:pre-wrap;overflow-wrap:anywhere;flex:1}
 .node .ph{color:var(--muted);font-style:italic}
-.node.sel{outline:2px solid var(--c);outline-offset:3px;z-index:3}
+.node.sel{outline:2px solid var(--accent);outline-offset:3px;z-index:3}
 .node.s1{max-width:220px}.node.s1 .title{font-size:13px;line-height:1.3;font-weight:500}
 .node.s2{max-width:260px}.node.s2 .title{font-size:16px;line-height:1.3;font-weight:500}
 .node.s3{max-width:320px;padding:12px 16px 13px}.node.s3 .title{font-size:24px;line-height:1.15;font-weight:600;letter-spacing:-.01em}
 .node.s4{max-width:440px;padding:14px 20px 16px}.node.s4 .title{font-size:38px;line-height:1.02;font-weight:700;letter-spacing:-.025em}
-.node.root{background:var(--c);border-color:transparent;color:#fff;border-radius:14px}
-.node.root .ph{color:rgba(255,255,255,.75)}
+/* a box with a colour is filled with it; --on is white or dark text, whichever reads better */
+.node.filled{background:var(--c);border-color:transparent;color:var(--on);border-radius:12px}
+.node.filled .ph{color:var(--on);opacity:.7}
+.node.filled.done .title{color:var(--on);opacity:.7}
+.node.filled .chk,.node.filled .ichk{border-color:var(--on)}
+.node.filled.done .chk,.node.filled .ichk.on{background:var(--on)}
+.node.filled.done .chk::after,.node.filled .ichk.on::after{border-color:var(--c)}
+.node.filled .items li.done span{color:inherit;opacity:.65}
 .node.done .title{text-decoration:line-through;text-decoration-thickness:1.5px;color:var(--muted)}
 .node.done{opacity:.72}
 .addh{position:absolute;width:24px;height:24px;border-radius:50%;border:2px solid var(--paper);background:var(--c);color:#fff;padding:0;
@@ -85,7 +91,7 @@ button{cursor:pointer}
 .fold.b{top:100%;left:50%;margin:-9px 0 0 -9px}.fold.t{bottom:100%;left:50%;margin:0 0 -9px -9px}
 .node .title[contenteditable]{user-select:text;-webkit-user-select:text;cursor:text;outline:none;min-width:2ch}
 .node .title[contenteditable]:empty::before{content:"Untitled";color:var(--muted);font-style:italic}
-.node.root .title[contenteditable]:empty::before{color:rgba(255,255,255,.75)}
+.node.filled .title[contenteditable]:empty::before{color:var(--on);opacity:.7}
 
 .chk{flex:none;width:18px;height:18px;margin-top:1px;border-radius:50%;border:2px solid var(--c);background:transparent;padding:0;position:relative}
 .node.s3 .chk{margin-top:5px}.node.s4 .chk{margin-top:10px;width:22px;height:22px}
@@ -104,10 +110,10 @@ button{cursor:pointer}
 .due.over{background:var(--warn);border-color:var(--warn);color:#fff}
 .node.done .due{background:none;border-color:var(--line);color:var(--muted)}
 .prog{color:var(--muted)}
-.root .prog{color:rgba(255,255,255,.85)}
-.root .due{border-color:rgba(255,255,255,.5);color:#fff}
+.filled .prog{color:var(--on);opacity:.8}
+.filled .due{border-color:var(--on);color:var(--on)}
 .lnk{color:var(--accent);text-decoration:underline;text-underline-offset:2px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.root .lnk{color:#fff}
+.filled .lnk{color:var(--on)}
 
 /* Chrome */
 .bar{position:absolute;display:flex;align-items:center;gap:4px;padding:5px;background:var(--panel);
@@ -146,7 +152,11 @@ button{cursor:pointer}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .inp{height:34px;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:0 10px;font-size:14px;min-width:0}
 .inp.grow{flex:1}
-.sw{width:24px;height:24px;border-radius:50%;border:0;background:var(--s);padding:0}
+.sw{width:24px;height:24px;border-radius:50%;border:0;background:var(--s);padding:0;box-shadow:inset 0 0 0 1px rgba(128,128,128,.35)}
+.sw.none{background:var(--card);position:relative;overflow:hidden}
+.sw.none::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1.5px;background:var(--warn);transform:rotate(45deg)}
+.sw.pick{background:conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);position:relative;cursor:pointer;display:inline-block}
+.sw.pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
 .sw.on{outline:2px solid var(--ink);outline-offset:2px}
 .plist{display:grid;gap:4px}
 .pitem{display:flex;gap:8px;align-items:center}
@@ -204,11 +214,11 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
     </div>
   </div>
   <div id="marquee" hidden></div>
-  <div id="empty" hidden>Double-click anywhere, or use New subject, to start a branch.</div>
+  <div id="empty" hidden>Double-click anywhere, or use New box, to start.</div>
 
   <div class="bar" id="topleft">
     <span class="brand">Branches</span>
-    <button class="btn primary" id="bNew">New subject</button>
+    <button class="btn primary" id="bNew">New box</button>
   </div>
 
   <div class="bar" id="topright">
@@ -259,7 +269,8 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
 
 <script>
 (() => {
-const COLORS=['#2E57E6','#CF3429','#16825A','#B26B0E','#7440D0','#0E8398','#C0327F','#4A5462'];
+const COLORS=['#2E57E6','#CF3429','#16825A','#B26B0E','#7440D0','#0E8398','#C0327F','#4A5462',
+  '#F76B15','#FFC53D','#FFE629','#99D52A','#30A46C','#7CE2FE','#F4A4C0','#FFFFFF'];
 const KEY='branches.v1';
 /* Firebase web config (public by design; the Firestore rules keep each board private). null = sync off */
 const FIREBASE_CONFIG={
@@ -284,8 +295,10 @@ function hiddenNode(id){let n=N(id),guard=0;while(n&&n.parent&&guard++<999){n=N(
 const visible=()=>all().filter(n=>!hiddenNode(n.id));
 function reveal(id){let n=N(id),guard=0;while(n&&n.parent&&guard++<999){n=N(n.parent);if(n)delete n.collapsed}}
 function desc(id){const out=[],st=[id];while(st.length){const c=st.pop();for(const k of kids(c)){out.push(k.id);st.push(k.id)}}return out}
-function rootOf(id){let n=N(id),guard=0;while(n&&n.parent&&N(n.parent)&&guard++<999)n=N(n.parent);return n}
-const colorOf=id=>(rootOf(id)&&rootOf(id).color)||COLORS[0];
+const colorOf=id=>(N(id)&&N(id).color)||'';
+// white or dark text on a coloured box, by perceived brightness
+function onColor(hex){const m=/^#?([0-9a-f]{6})$/i.exec(hex||'');if(!m)return '#fff';const v=parseInt(m[1],16),r=v>>16,g=v>>8&255,b=v&255;
+  return (0.299*r+0.587*g+0.114*b)>165?'#1B2025':'#fff'}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function safeUrl(u){u=(u||'').trim();if(!/^[a-z][a-z0-9+.-]*:/i.test(u))u='https://'+u;return /^(https?|mailto):/i.test(u)?u:'#'}
 function host(u){try{return new URL(safeUrl(u)).hostname.replace(/^www\./,'')||u}catch(e){return u}}
@@ -324,16 +337,16 @@ function seed(){
 
 /* ---------- render ---------- */
 function cardHTML(n){
-  const isRoot=!n.parent;
+  const col=n.color||'';
   const items=(n.items||[]).map(i=>`<li class="${i.done?'done':''}"><button class="ichk ${i.done?'on':''}" data-act="item" data-item="${i.id}" aria-label="Toggle item"></button><span>${esc(i.text)||'&nbsp;'}</span></li>`).join('');
   const di=dueInfo(n.due);
   const links=(n.links||[]).map(l=>`<a class="lnk" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener">${esc(l.label||host(l.url))}</a>`).join('');
   let prog='';
-  if(isRoot){const d=desc(n.id).map(N);if(d.length)prog=`<span class="prog">${d.filter(x=>x.done).length} of ${d.length} done</span>`}
-  else if(n.items&&n.items.length)prog=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
+  const d=desc(n.id).map(N);if(d.length)prog=`<span class="prog">${d.filter(x=>x.done).length} of ${d.length} done</span>`;
+  if(n.items&&n.items.length)prog+=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
   const meta=(di||links||prog)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${prog}${links}</div>`:'';
-  return `<div class="node s${n.size||2}${isRoot?' root':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${colorOf(n.id)};${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
-<div class="head">${isRoot?'':`<button class="chk" data-act="done" aria-label="Mark done"></button>`}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}</div>`;
+  return `<div class="node s${n.size||2}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
+<div class="head"><button class="chk" data-act="done" aria-label="Mark done"></button><div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}</div>`;
 }
 function foldHTML(n){
   const ks=kids(n.id);if(!ks.length)return '';
@@ -372,7 +385,7 @@ function drawEdges(){
   for(const n of all()){
     const p=n.parent&&N(n.parent);if(!p)continue;
     const pe=elMap[p.id],ce=elMap[n.id];if(!pe||!ce)continue;
-    const pw=pe.offsetWidth,ph=pe.offsetHeight,cw=ce.offsetWidth,chh=ce.offsetHeight,side=sideOf(p,n),c=colorOf(n.id);
+    const pw=pe.offsetWidth,ph=pe.offsetHeight,cw=ce.offsetWidth,chh=ce.offsetHeight,side=sideOf(p,n);
     let d,x2,y2;
     if(side==='t'||side==='b'){
       const down=side==='b',x1=p.x+pw/2,y1=down?p.y+ph:p.y;x2=n.x+cw/2;y2=down?n.y:n.y+chh;
@@ -383,7 +396,7 @@ function drawEdges(){
       const dx=Math.max(28,Math.abs(x2-x1)/2)*(right?1:-1);
       d=`M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
     }
-    out.push(`<path class="${n.done?'done':''}" stroke="${c}" d="${d}"/><circle cx="${x2}" cy="${y2}" r="3.2" fill="${c}"/>`);
+    out.push(`<path class="${n.done?'done':''}" d="${d}"/><circle cx="${x2}" cy="${y2}" r="3.2"/>`);
   }
   edges.innerHTML=out.join('');
 }
@@ -421,7 +434,6 @@ function create(o){
   const id=uid();
   S.nodes[id]={id,parent:null,x:0,y:0,title:'',size:2,done:false,due:'',items:[],links:[],_new:true,...o};
   if(o.parent&&N(o.parent))delete N(o.parent).collapsed;
-  if(!S.nodes[id].parent&&!S.nodes[id].color){const used=all().filter(n=>!n.parent).length-1;S.nodes[id].color=COLORS[used%COLORS.length]}
   save();return id;
 }
 function height(id){return elMap[id]?elMap[id].offsetHeight:44}
@@ -430,14 +442,13 @@ function addChild(pid){
   const ks=kids(pid);let x=p.x+pw+90,y=p.y;
   if(ks.length){const side=ks.filter(k=>k.x>=p.x);const base=side.length?side:ks;let maxB=-1e9;
     for(const k of base){const b=k.y+height(k.id);if(b>maxB){maxB=b;x=k.x}}y=maxB+16}
-  const size=p.parent?Math.min(p.size||2,2):Math.max(1,(p.size||3)-1);
-  return create({parent:pid,x,y,size:Math.min(size,2)});
+  return create({parent:pid,x,y,size:2});
 }
 function addChildDir(pid,dir){
   if(editing)finishEdit();
   if(dir==='r'){const id=addChild(pid);N(id).side='r';return id}
   const p=N(pid),pw=elMap[pid]?elMap[pid].offsetWidth:200,ph=height(pid);
-  const size=Math.min(p.parent?Math.min(p.size||2,2):Math.max(1,(p.size||3)-1),2);
+  const size=2;
   const row=kids(pid).filter(k=>sideOf(p,k)===dir),w=k=>elMap[k.id]?elMap[k.id].offsetWidth:160;
   let x,y,alignRight=null,alignBottom=null;
   if(dir==='l'){
@@ -507,6 +518,7 @@ function renderMultiPanel(){
     <div class="field"><span class="fl">Text size</span>
       <div class="row"><div class="seg">${[1,2,3,4].map(s=>`<button data-act="msize" data-v="${s}" class="${sz===s?'on':''}">${['S','M','L','XL'][s-1]}</button>`).join('')}</div></div>
     </div>
+    <div class="field"><span class="fl">Colour</span>${swatches(ns.every(n=>n.color===ns[0].color)?ns[0].color:null,'mcolor','mColor')}</div>
     <div class="actions">
       <button class="btn" data-act="mdone">Mark done</button>
       <button class="btn" data-act="mundone">Mark not done</button>
@@ -517,24 +529,28 @@ function renderMultiPanel(){
   panel.hidden=false;
 }
 function closePanel(){panel.hidden=true;panel.innerHTML=''}
+function swatches(cur,act,pickId){
+  const custom=cur&&!COLORS.includes(cur);
+  return `<div class="row"><button class="sw none ${!cur?'on':''}" data-act="${act}" data-v="" aria-label="No colour" title="No colour"></button>${COLORS.map(c=>`<button class="sw ${cur===c?'on':''}" style="--s:${c}" data-act="${act}" data-v="${c}" aria-label="Colour ${c}"></button>`).join('')}<label class="sw pick ${custom?'on':''}" title="Any colour"${custom?` style="background:${cur}"`:''}><input type="color" id="${pickId}" value="${esc(cur||'#2E57E6')}" aria-label="Pick any colour"></label></div>`;
+}
 function renderPanel(){
   if(msel.size>1){renderMultiPanel();return}
   const n=N(sel);if(!n){closePanel();return}
-  const isRoot=!n.parent;const [dv,tv]=(n.due||'').split('T');
+  const [dv,tv]=(n.due||'').split('T');
   const active=document.activeElement&&document.activeElement.id;
   panel.innerHTML=`
-  <div class="top"><span>${isRoot?'Subject':'Task'}</span><button class="x" data-act="close" aria-label="Close panel">×</button></div>
+  <div class="top"><span>Box</span><button class="x" data-act="close" aria-label="Close panel">×</button></div>
   <div class="body">
     <div class="field">
-      <textarea id="pTitle" rows="2" placeholder="${isRoot?'Name this subject':'What needs doing?'}">${esc(n.title)}</textarea>
-      <div class="hint"><kbd>Enter</kbd> adds a task below · <kbd>Tab</kbd> adds a branch · <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back up</div>
+      <textarea id="pTitle" rows="2" placeholder="What’s this?">${esc(n.title)}</textarea>
+      <div class="hint"><kbd>Enter</kbd> adds a box below · <kbd>Tab</kbd> adds a branch · <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back up</div>
     </div>
     <div class="field"><span class="fl">Text size</span>
       <div class="row"><div class="seg">${[1,2,3,4].map(s=>`<button data-act="size" data-v="${s}" class="${(n.size||2)===s?'on':''}">${['S','M','L','XL'][s-1]}</button>`).join('')}</div>
-      ${isRoot?'':`<button class="btn" data-act="toggleDone" style="border:1px solid var(--line);background:var(--card)">${n.done?'Mark not done':'Mark done'}</button>`}</div>
+      <button class="btn" data-act="toggleDone" style="border:1px solid var(--line);background:var(--card)">${n.done?'Mark not done':'Mark done'}</button></div>
       <div class="hint">Drag the square on the card’s corner to resize the box.${n.w||n.h?` <button class="btn" data-act="resetSize" style="height:26px;padding:0 8px;border:1px solid var(--line);background:var(--card);font-size:12px">Reset box size</button>`:''}</div>
     </div>
-    ${isRoot?`<div class="field"><span class="fl">Branch colour</span><div class="row">${COLORS.map(c=>`<button class="sw ${n.color===c?'on':''}" style="--s:${c}" data-act="color" data-v="${c}" aria-label="Colour ${c}"></button>`).join('')}</div></div>`:''}
+    <div class="field"><span class="fl">Colour</span>${swatches(n.color,'color','pColor')}</div>
     <div class="field"><label for="pDate">Due date</label>
       <div class="row"><input class="inp grow" type="date" id="pDate" value="${esc(dv||'')}"><input class="inp" type="time" id="pTime" value="${esc(tv||'')}" ${dv?'':'disabled'} aria-label="Due time">
       ${n.due?`<button class="x" data-act="clearDue" aria-label="Clear due date">×</button>`:''}</div>
@@ -549,9 +565,9 @@ function renderPanel(){
     </div>
     <div class="actions">
       <button class="btn" data-act="addChild">Add branch</button>
-      <button class="btn" data-act="addSibling">${isRoot?'Add subject':'Add task below'}</button>
-      <button class="btn" data-act="attach">Attach to…</button>
-      ${isRoot?'':`<button class="btn" data-act="detach">Make it a subject</button>`}
+      <button class="btn" data-act="addSibling">Add box below</button>
+      <button class="btn" data-act="attach">Link to…</button>
+      ${n.parent?`<button class="btn" data-act="detach">Unlink</button>`:''}
       <button class="btn danger" data-act="delete">Delete</button>
     </div>
   </div>`;
@@ -560,7 +576,10 @@ function renderPanel(){
 }
 
 panel.addEventListener('input',e=>{
-  const n=N(sel);if(!n)return;const t=e.target;
+  const t=e.target;
+  if(t.id==='mColor'){[...msel].map(N).filter(Boolean).forEach(n=>n.color=t.value);render();save();return}
+  const n=N(sel);if(!n)return;
+  if(t.id==='pColor'){n.color=t.value;render();save();return}
   if(t.id==='pTitle'){n.title=t.value;if(t.value)delete n._new}
   else if(t.dataset.itemtext){const i=n.items.find(i=>i.id===t.dataset.itemtext);if(i)i.text=t.value}
   else if(t.dataset.linklabel!==undefined){n.links[+t.dataset.linklabel].label=t.value}
@@ -569,6 +588,7 @@ panel.addEventListener('input',e=>{
   else return;
   render();save();
 });
+panel.addEventListener('change',e=>{if(e.target.id==='pColor'||e.target.id==='mColor')renderPanel()});
 panel.addEventListener('keydown',e=>{
   const t=e.target,n=N(sel);if(!n)return;
   if(t.id==='pTitle'){
@@ -587,14 +607,15 @@ panel.addEventListener('click',e=>{
     if(a==='close'){deselect();return}
     if(a==='mdelete'){delMany([...msel]);return}
     if(a==='msize')ns.forEach(n=>n.size=+b.dataset.v);
-    else if(a==='mdone'||a==='mundone')ns.forEach(n=>{if(n.parent)n.done=a==='mdone'});
+    else if(a==='mcolor')ns.forEach(n=>{if(b.dataset.v)n.color=b.dataset.v;else delete n.color});
+    else if(a==='mdone'||a==='mundone')ns.forEach(n=>n.done=a==='mdone');
     render();renderPanel();save();return;
   }
   const n=N(sel);if(!n)return;
   if(a==='close')deselect();
   else if(a==='size'){n.size=+b.dataset.v;delete n._new;render();renderPanel();save()}
   else if(a==='resetSize'){delete n.w;delete n.h;render();renderPanel();save()}
-  else if(a==='color'){n.color=b.dataset.v;render();renderPanel();save()}
+  else if(a==='color'){if(b.dataset.v)n.color=b.dataset.v;else delete n.color;render();renderPanel();save()}
   else if(a==='toggleDone'){n.done=!n.done;render();renderPanel();save()}
   else if(a==='clearDue'){n.due='';render();renderPanel();save()}
   else if(a==='pitem'){const i=n.items.find(i=>i.id===b.dataset.item);i.done=!i.done;render();renderPanel();save()}
@@ -602,15 +623,15 @@ panel.addEventListener('click',e=>{
   else if(a==='dellink'){n.links.splice(+b.dataset.i,1);render();renderPanel();save()}
   else if(a==='addChild')select(addChild(sel),true);
   else if(a==='addSibling')select(addSibling(sel),true);
-  else if(a==='attach'){attachFrom=sel;canvas.classList.add('attaching');toast('Tap the card it belongs under, or empty space to cancel')}
-  else if(a==='detach'){n.parent=null;if(!n.color)n.color=COLORS[all().filter(x=>!x.parent).length%COLORS.length];n.size=Math.max(n.size||2,3);render();renderPanel();save()}
+  else if(a==='attach'){attachFrom=sel;canvas.classList.add('attaching');toast('Tap the box to link it under, or empty space to cancel')}
+  else if(a==='detach'){n.parent=null;delete n.side;render();renderPanel();save();toast('Unlinked')}
   else if(a==='delete')del(sel);
 });
 function doAttach(target){
   const from=attachFrom;attachFrom=null;canvas.classList.remove('attaching');
   if(!target){toast('Attach cancelled');return}
   if(target===from||desc(from).includes(target)){toast('A card can’t go under its own branch');return}
-  const n=N(from);n.parent=target;delete N(target).collapsed;if((n.size||2)>2)n.size=2;render();renderPanel();save();toast('Attached');
+  const n=N(from);n.parent=target;delete n.side;delete N(target).collapsed;render();renderPanel();save();toast('Linked');
 }
 
 /* ---------- card clicks (checkboxes) ---------- */
@@ -817,7 +838,7 @@ canvas.addEventListener('pointercancel',endPointer);
 canvas.addEventListener('dblclick',e=>{
   const under=document.elementFromPoint(e.clientX,e.clientY);if(under&&under.closest('.node'))return;
   const r=canvas.getBoundingClientRect(),v=S.view;
-  const id=create({x:Math.round((e.clientX-r.left-v.x)/v.k),y:Math.round((e.clientY-r.top-v.y)/v.k-20),size:3});
+  const id=create({x:Math.round((e.clientX-r.left-v.x)/v.k),y:Math.round((e.clientY-r.top-v.y)/v.k-20),size:2});
   select(id,true);
 });
 canvas.addEventListener('wheel',e=>{
@@ -832,7 +853,7 @@ $('#bNew').onclick=()=>{
   const roots=all().filter(n=>!n.parent);
   let x=Math.round((r.width*.3-v.x)/v.k),y=Math.round((r.height*.45-v.y)/v.k);
   for(let t=0;t<20&&all().some(n=>Math.abs(n.x-x)<120&&Math.abs(n.y-y)<60);t++)y+=80;
-  select(create({x,y,size:3}),true);
+  select(create({x,y,size:2}),true);
 };
 $('#moveSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;moveMode=b.dataset.m;
   $('#moveSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))};
@@ -848,7 +869,7 @@ function updateBadge(){
 function closeDue(){duelist.hidden=true}
 function renderDue(){
   const rows=all().filter(n=>!n.done&&dueInfo(n.due)).map(n=>({n,d:dueInfo(n.due)})).sort((a,b)=>a.d.t-b.d.t);
-  const grp=(name,list)=>list.length?`<div class="grp"><h3>${name}</h3>${list.map(({n,d})=>`<button class="drow ${d.cls}" data-go="${n.id}" style="--c:${colorOf(n.id)}"><span class="t">${esc(n.title||'Untitled')}</span><span class="d">${esc(d.label)}</span></button>`).join('')}</div>`:'';
+  const grp=(name,list)=>list.length?`<div class="grp"><h3>${name}</h3>${list.map(({n,d})=>`<button class="drow ${d.cls}" data-go="${n.id}" style="--c:${colorOf(n.id)||'var(--muted)'}"><span class="t">${esc(n.title||'Untitled')}</span><span class="d">${esc(d.label)}</span></button>`).join('')}</div>`:'';
   const over=rows.filter(r=>r.d.cls==='over'),today=rows.filter(r=>r.d.cls==='today'),later=rows.filter(r=>r.d.cls==='later');
   duelist.innerHTML=`<div class="top"><span>Due dates</span><button class="x" data-close aria-label="Close">×</button></div>
   <div class="body">${rows.length?grp('Overdue',over)+grp('Today',today)+grp('Coming up',later):'<p class="hint" style="margin:0">Nothing has a due date yet. Select a task and set one in its panel.</p>'}
