@@ -501,7 +501,7 @@ function cardHTML(n){
   const rp=n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'';
   const meta=(di||links||prog||rp)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${rp}${prog}${links}</div>`:'';
   return `<div class="node s${n.size||2}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
-<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span><span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
+<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
 function foldHTML(n){
   const ks=kids(n.id);if(!ks.length)return '';
@@ -684,7 +684,7 @@ function renderMultiPanel(){
       <button class="btn" data-act="mundone">Mark not done</button>
       <button class="btn danger" data-act="mdelete">Delete ${ns.length}</button>
     </div>
-    <p class="hint" style="margin:0">Shift-click a card to add or remove it. Drag any selected card to move them all.</p>
+    <p class="hint" style="margin:0">Shift-click a card to add or remove it. Drag any selected card to move them all, or drag any corner square to resize them all.${ns.some(n=>n.w||n.h)?` <button class="btn" data-act="mresetsize" style="height:26px;padding:0 8px;border:1px solid var(--line);background:var(--card);font-size:12px">Reset box sizes</button>`:''}</p>
   </div>`;
   panel.hidden=false;document.body.classList.add('panel-open');
 }
@@ -788,6 +788,7 @@ panel.addEventListener('click',e=>{
     if(a==='close'){deselect();return}
     if(a==='mdelete'){delMany([...msel]);return}
     if(a==='msize')ns.forEach(n=>n.size=+b.dataset.v);
+    else if(a==='mresetsize')ns.forEach(n=>{delete n.w;delete n.h});
     else if(a==='mcolor')ns.forEach(n=>{if(b.dataset.v)n.color=b.dataset.v;else delete n.color});
     else if(a==='mtask')ns.forEach(n=>n.task=true);
     else if(a==='mnotask')ns.forEach(n=>{n.task=false;n.done=false});
@@ -875,7 +876,9 @@ canvas.addEventListener('pointerdown',e=>{
   if(rz&&pts.size===0){
     const id=rz.closest('.node').dataset.id,el=elMap[id];
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY});try{canvas.setPointerCapture(e.pointerId)}catch(_){}
-    g={type:'resize',id,sx:e.clientX,sy:e.clientY,ow:el.offsetWidth,oh:el.offsetHeight,moved:false};return;
+    // with several boxes selected, every one of them resizes by the same amount
+    const group=msel.size>1&&msel.has(id)?[...msel].filter(i=>i!==id&&elMap[i]).map(i=>({id:i,ow:elMap[i].offsetWidth,oh:elMap[i].offsetHeight})):[];
+    g={type:'resize',id,group,sx:e.clientX,sy:e.clientY,ow:el.offsetWidth,oh:el.offsetHeight,moved:false};return;
   }
   pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{canvas.setPointerCapture(e.pointerId)}catch(_){}
@@ -976,7 +979,7 @@ canvas.addEventListener('pointermove',e=>{
     const k=S.view.k,n=N(g.id),el=elMap[g.id];if(!n||!el)return;
     let w=Math.max(120,g.ow+dx/k),h=Math.max(36,g.oh+dy/k),segs=[];
     if(!e.altKey){  // snap the right and bottom edges to other cards' edges and centres
-      if(!g.snap)g.snap=snapPrep(new Set([g.id]),g.id);
+      if(!g.snap)g.snap=snapPrep(new Set([g.id,...g.group.map(o=>o.id)]),g.id);
       const T=7/k,near=(v,list)=>{let b=null;for(const a of list)if(Math.abs(a-v)<=T&&(b===null||Math.abs(a-v)<Math.abs(b-v)))b=a;return b};
       const xs=g.snap.refs.flatMap(f=>[f.x,f.x+f.w/2,f.x+f.w]),ys=g.snap.refs.flatMap(f=>[f.y,f.y+f.h/2,f.y+f.h]);
       const bx=near(n.x+w,xs),by=near(n.y+h,ys);
@@ -985,6 +988,10 @@ canvas.addEventListener('pointermove',e=>{
     }
     n.w=Math.round(w);if(Math.abs(dy)>2||n.h)n.h=Math.round(h);
     el.style.width=n.w+'px';el.style.maxWidth='none';if(n.h)el.style.minHeight=n.h+'px';
+    const dw=w-g.ow,dh=h-g.oh;
+    for(const o of g.group){const m=N(o.id),me=elMap[o.id];if(!m||!me)continue;
+      m.w=Math.round(Math.max(120,o.ow+dw));if(Math.abs(dy)>2||m.h)m.h=Math.round(Math.max(36,o.oh+dh));
+      me.style.width=m.w+'px';me.style.maxWidth='none';if(m.h)me.style.minHeight=m.h+'px'}
     drawGuides(segs);drawEdges();
   }
   else if(g.type==='drag'){
