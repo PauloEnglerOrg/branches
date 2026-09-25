@@ -479,15 +479,23 @@ function addSibling(id){
 function isEmpty(n){return n&&n._new&&!n.title&&!(n.items||[]).length&&!(n.links||[]).length&&!n.due&&!kids(n.id).length}
 let undoSnap=null;
 function del(id){delMany([id])}
+/* deletes only the given boxes; their branches move up to the nearest surviving box above (or float free) */
 function delMany(list){
-  list=list.filter(N);if(!list.length)return;
-  const ids=[...new Set(list.flatMap(i=>[i,...desc(i)]))],n=N(list[0]),extra=ids.length-list.length;
-  undoSnap=ids.map(i=>JSON.parse(JSON.stringify(N(i))));
-  ids.forEach(i=>delete S.nodes[i]);
-  sel=null;msel.clear();closePanel();render();save();
-  const what=list.length>1?`${list.length} cards`:`“${n.title||'Untitled'}”`;
-  toast(`Deleted ${what}`+(extra?` and ${extra} branch${extra>1?'es':''}`:''),'Undo',()=>{
-    undoSnap.forEach(s=>S.nodes[s.id]=s);undoSnap=null;render();save();if(list.length===1)select(list[0])});
+  const gone=new Set(list.filter(N));if(!gone.size)return;
+  const n=N([...gone][0]);
+  const up=id=>{let p=N(id).parent,guard=0;while(p&&gone.has(p)&&guard++<999)p=N(p).parent;return p&&N(p)?p:null};
+  const moved=all().filter(k=>!gone.has(k.id)&&gone.has(k.parent));
+  const snap={nodes:[...gone].map(i=>JSON.parse(JSON.stringify(N(i)))),moved:moved.map(k=>({id:k.id,parent:k.parent,side:k.side}))};
+  const newParent=Object.fromEntries(moved.map(k=>[k.id,up(k.id)]));
+  for(const k of moved){k.parent=newParent[k.id];delete k.side;if(k.parent)delete N(k.parent).collapsed}
+  gone.forEach(i=>delete S.nodes[i]);
+  undoSnap=snap;sel=null;msel.clear();closePanel();render();save();
+  const what=gone.size>1?`${gone.size} boxes`:`“${n.title||'Untitled'}”`;
+  toast(`Deleted ${what}`+(moved.length?` (kept ${moved.length} branch${moved.length>1?'es':''})`:''),'Undo',()=>{
+    const u=undoSnap;undoSnap=null;if(!u)return;
+    u.nodes.forEach(x=>S.nodes[x.id]=x);
+    u.moved.forEach(m=>{const k=N(m.id);if(!k)return;k.parent=m.parent;if(m.side)k.side=m.side;else delete k.side});
+    render();save();if(u.nodes.length===1)select(u.nodes[0].id)});
 }
 
 /* ---------- selection & panel ---------- */
