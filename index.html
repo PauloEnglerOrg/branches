@@ -120,12 +120,22 @@ button{cursor:pointer}
   border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);z-index:5}
 #topleft{top:12px;left:12px}
 #topright{top:12px;right:12px}
+.bar>*{flex:none}
 .brand{font-weight:700;font-size:17px;letter-spacing:-.02em;padding:0 8px 0 6px}
 .btn{height:32px;min-width:32px;padding:0 10px;border:0;border-radius:8px;background:transparent;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;font-size:14px}
 .btn:hover{background:var(--hover)}
 .btn.primary{background:var(--ink);color:var(--paper)}
 .btn.primary:hover{opacity:.88;background:var(--ink)}
 .btn.danger{color:var(--warn)}
+.btn:disabled{opacity:.35;cursor:default;background:transparent}
+#bUndo,#bRedo{font-size:20px;font-weight:600;padding:0 6px}
+#histlist .hrow{display:flex;gap:10px;align-items:baseline;text-align:left;border:0;background:var(--card);border-radius:8px;padding:9px 10px;width:100%}
+#histlist .hrow:hover{background:var(--hover)}
+#histlist .hrow .t{flex:1;font-size:14px}
+#histlist .hrow .d{font-size:12px;color:var(--muted);white-space:nowrap}
+#histlist .hrow.cur{outline:2px solid var(--accent);outline-offset:-2px}
+#histlist .hrow.future{opacity:.45}
+#histlist .hl{display:grid;gap:4px}
 .sep{width:1px;height:20px;background:var(--line);margin:0 2px}
 .seg{display:inline-flex;background:var(--hover);border-radius:8px;padding:2px}
 .seg button{height:28px;padding:0 9px;border:0;border-radius:6px;background:transparent;font-size:13px;color:var(--muted)}
@@ -219,6 +229,10 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
   <div class="bar" id="topleft">
     <span class="brand">Branches</span>
     <button class="btn primary" id="bNew">New box</button>
+    <span class="sep"></span>
+    <button class="btn" id="bUndo" aria-label="Undo" title="Undo (⌘Z)" disabled>↶</button>
+    <button class="btn" id="bRedo" aria-label="Redo" title="Redo (⇧⌘Z)" disabled>↷</button>
+    <button class="btn" id="bHist" title="Everything you changed since opening the page">History</button>
   </div>
 
   <div class="bar" id="topright">
@@ -240,6 +254,7 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
 
   <aside class="sheet" id="panel" hidden></aside>
   <aside class="sheet" id="duelist" hidden></aside>
+  <aside class="sheet" id="histlist" hidden></aside>
 
   <div id="modal" hidden>
     <div class="box">
@@ -305,7 +320,7 @@ function host(u){try{return new URL(safeUrl(u)).hostname.replace(/^www\./,'')||u
 
 /* ---------- storage ---------- */
 function load(){try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r);if(d&&d.nodes){S=d;S.view=S.view||{x:0,y:0,k:1};return true}}}catch(e){}return false}
-let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},200);queuePush()}
+let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},200);queuePush();queueCheckpoint()}
 
 /* ---------- dates ---------- */
 function parseDue(d){if(!d)return null;const [ds,ts]=d.split('T');const [y,m,dd]=ds.split('-').map(Number);if(!y)return null;
@@ -477,7 +492,6 @@ function addSibling(id){
   return create({parent:n.parent,x:n.x,y:maxB+16,size:n.size});
 }
 function isEmpty(n){return n&&n._new&&!n.title&&!(n.items||[]).length&&!(n.links||[]).length&&!n.due&&!kids(n.id).length}
-let undoSnap=null;
 function del(id){delMany([id])}
 /* deletes only the given boxes; their branches move up to the nearest surviving box above (or float free) */
 function delMany(list){
@@ -485,22 +499,17 @@ function delMany(list){
   const n=N([...gone][0]);
   const up=id=>{let p=N(id).parent,guard=0;while(p&&gone.has(p)&&guard++<999)p=N(p).parent;return p&&N(p)?p:null};
   const moved=all().filter(k=>!gone.has(k.id)&&gone.has(k.parent));
-  const snap={nodes:[...gone].map(i=>JSON.parse(JSON.stringify(N(i)))),moved:moved.map(k=>({id:k.id,parent:k.parent,side:k.side}))};
   const newParent=Object.fromEntries(moved.map(k=>[k.id,up(k.id)]));
   for(const k of moved){k.parent=newParent[k.id];delete k.side;if(k.parent)delete N(k.parent).collapsed}
   gone.forEach(i=>delete S.nodes[i]);
-  undoSnap=snap;sel=null;msel.clear();closePanel();render();save();
+  sel=null;msel.clear();closePanel();render();save();checkpoint();
   const what=gone.size>1?`${gone.size} boxes`:`“${n.title||'Untitled'}”`;
-  toast(`Deleted ${what}`+(moved.length?` (kept ${moved.length} branch${moved.length>1?'es':''})`:''),'Undo',()=>{
-    const u=undoSnap;undoSnap=null;if(!u)return;
-    u.nodes.forEach(x=>S.nodes[x.id]=x);
-    u.moved.forEach(m=>{const k=N(m.id);if(!k)return;k.parent=m.parent;if(m.side)k.side=m.side;else delete k.side});
-    render();save();if(u.nodes.length===1)select(u.nodes[0].id)});
+  toast(`Deleted ${what}`+(moved.length?` (kept ${moved.length} branch${moved.length>1?'es':''})`:''),'Undo',undo);
 }
 
 /* ---------- selection & panel ---------- */
 function select(id,focus){
-  const prev=sel;sel=id;msel.clear();reveal(id);
+  const prev=sel;sel=id;msel.clear();reveal(id);closeHist();
   if(prev&&prev!==id&&isEmpty(N(prev)))delete S.nodes[prev];
   closeDue();render();renderPanel();ensureVisible(id);
   if(focus){const t=$('#pTitle');if(t){t.focus();t.setSelectionRange(t.value.length,t.value.length)}}
@@ -883,7 +892,7 @@ function renderDue(){
   <div class="body">${rows.length?grp('Overdue',over)+grp('Today',today)+grp('Coming up',later):'<p class="hint" style="margin:0">Nothing has a due date yet. Select a task and set one in its panel.</p>'}
   <p class="hint" style="margin:0">Reminders pop up here while this page is open. Tasks are only checked when the page is running.</p></div>`;
 }
-$('#bDue').onclick=()=>{if(!duelist.hidden){closeDue();return}if(sel)deselect();renderDue();duelist.hidden=false};
+$('#bDue').onclick=()=>{if(!duelist.hidden){closeDue();return}if(sel||msel.size)deselect();closeHist();renderDue();duelist.hidden=false};
 duelist.addEventListener('click',e=>{
   if(e.target.closest('[data-close]')){closeDue();return}
   const r=e.target.closest('[data-go]');if(!r)return;const id=r.dataset.go;
@@ -915,8 +924,8 @@ $('#bkCopy').onclick=async()=>{
 };
 $('#bkLoad').onclick=()=>{
   try{const d=JSON.parse($('#bkIn').value);if(!d||typeof d.nodes!=='object')throw 0;
-    const prev=JSON.stringify(S.nodes);S.nodes=d.nodes;sel=null;closePanel();render();fit();save();$('#modal').hidden=true;
-    toast('Board restored from backup','Undo',()=>{S.nodes=JSON.parse(prev);render();fit();save()})}
+    S.nodes=d.nodes;sel=null;closePanel();render();fit();save();$('#modal').hidden=true;
+    nextLabel='Restored a backup';checkpoint();toast('Board restored from backup','Undo',undo)}
   catch(e){toast('That doesn’t look like a Branches backup. Paste the full text you copied.')}
 };
 
@@ -946,6 +955,8 @@ document.addEventListener('keydown',e=>{
     if(!duelist.hidden){closeDue();return}
     if(sel||msel.size)deselect();return;
   }
+  if(!typing&&(e.metaKey||e.ctrlKey)&&(e.key.toLowerCase()==='z'||e.key.toLowerCase()==='y')){
+    e.preventDefault();if(e.shiftKey||e.key.toLowerCase()==='y')redo();else undo();return}
   if(typing||!$('#modal').hidden)return;
   if(msel.size>1){if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();delMany([...msel])}return}
   if(!sel)return;
@@ -998,12 +1009,12 @@ function onRemote(snap){
       if(!known&&mine.length&&canon(Object.fromEntries(mine.map(n=>[n.id,clean(n)])))!==canon(remote)){
         lsSet(PRESYNC,JSON.stringify(S.nodes));toast('Loaded your synced board. This device’s old board was kept aside.','Details',openModal);
       }else if(!known)toast('Signed in. Your synced board is loaded.');
-      S.nodes=remote;synced={};for(const id in remote)synced[id]=canon(remote[id]);
+      checkpoint();S.nodes=remote;synced={};for(const id in remote)synced[id]=canon(remote[id]);
       if(sel&&!N(sel)){sel=null;closePanel()}
-      render();if(!known)fit();save();
+      render();if(!known)fit();save();nextLabel='Loaded your synced board';checkpoint();
     }
   }else{
-    let changed=false;
+    let changed=false;checkpoint();
     for(const c of snap.docChanges()){
       const id=c.doc.id;
       if(c.type==='removed'){delete synced[id];if(S.nodes[id]){delete S.nodes[id];changed=true;if(sel===id){sel=null;closePanel()}}continue}
@@ -1014,7 +1025,7 @@ function onRemote(snap){
       if(pending||(local&&canon(clean(local))===s))continue;  // unsent local edit wins; identical needs nothing
       S.nodes[id]=d;changed=true;
     }
-    if(changed){render();if(sel&&!panel.contains(document.activeElement))renderPanel();save()}
+    if(changed){render();if(sel&&!panel.contains(document.activeElement))renderPanel();save();nextLabel='Changes from another device';checkpoint()}
   }
   setSync(m.hasPendingWrites?'saving':m.fromCache?'offline':'ok');
   renderSyncBox();
@@ -1045,18 +1056,80 @@ $('#modal').addEventListener('click',e=>{
   if(e.target.id==='bSignIn')signIn();
   else if(e.target.id==='bSignOut'){push();fb.signOut(fb.au);lsSet(SYNC_UID,null);toast('Signed out. The board stays on this device but no longer syncs.')}
   else if(e.target.id==='bkPresync'){
-    try{const prev=JSON.stringify(S.nodes);S.nodes=JSON.parse(lsGet(PRESYNC));lsSet(PRESYNC,null);sel=null;closePanel();render();fit();save();$('#modal').hidden=true;
-      toast('Board replaced','Undo',()=>{S.nodes=JSON.parse(prev);render();fit();save()})}catch(_){}
+    try{S.nodes=JSON.parse(lsGet(PRESYNC));lsSet(PRESYNC,null);sel=null;closePanel();render();fit();save();$('#modal').hidden=true;
+      nextLabel='Replaced board with this device’s old one';checkpoint();toast('Board replaced','Undo',undo)}catch(_){}
   }
   else if(e.target.id==='bkPresyncDrop'){lsSet(PRESYNC,null);renderSyncBox()}
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&user)push()});
+
+/* ---------- undo / redo / history (since the page was opened) ----------
+   hist is a list of board states; hi points at the current one. Every save() queues a checkpoint;
+   changes within half a second merge into one step. */
+let hist=[],hi=0,ckT=null,nextLabel=null;
+const snapNodes=()=>JSON.stringify(Object.fromEntries(all().filter(n=>!isEmpty(n)).map(n=>[n.id,clean(n)])));
+function queueCheckpoint(){clearTimeout(ckT);ckT=setTimeout(checkpoint,500)}
+function checkpoint(){
+  clearTimeout(ckT);if(!hist.length)return;
+  const j=snapNodes(),label=nextLabel;nextLabel=null;
+  if(j===hist[hi].json)return;
+  hist=hist.slice(0,hi+1);
+  hist.push({json:j,label:label||describe(JSON.parse(hist[hi].json),JSON.parse(j)),t:Date.now()});
+  if(hist.length>400)hist.splice(1,1);
+  hi=hist.length-1;updateHistUI();
+}
+function describe(a,b){
+  const nm=(m,ids)=>ids.length>1?`${ids.length} boxes`:`“${((m[ids[0]]||{}).title||'Untitled').slice(0,30)}”`;
+  const removed=Object.keys(a).filter(i=>!b[i]),added=Object.keys(b).filter(i=>!a[i]);
+  if(removed.length)return 'Deleted '+nm(a,removed);
+  if(added.length)return 'Added '+nm(b,added);
+  const changed=Object.keys(b).filter(i=>canon(a[i])!==canon(b[i]));if(!changed.length)return 'Edited';
+  const keys=new Set();for(const i of changed)for(const k of new Set([...Object.keys(a[i]),...Object.keys(b[i])]))if(canon(a[i][k])!==canon(b[i][k]))keys.add(k);
+  const only=(...ks)=>[...keys].every(k=>ks.includes(k)),who=nm(b,changed);
+  if(only('x','y','side'))return 'Moved '+who;
+  if(only('w','h'))return 'Resized '+who;
+  if(only('title'))return 'Edited text of '+who;
+  if(only('done'))return (changed.every(i=>b[i].done)?'Ticked ':'Unticked ')+who;
+  if(only('color'))return 'Recoloured '+who;
+  if(only('size'))return 'Changed text size of '+who;
+  if(only('collapsed'))return (changed.every(i=>b[i].collapsed)?'Collapsed ':'Expanded ')+who;
+  if(only('parent','side'))return 'Relinked '+who;
+  if(only('items'))return 'Edited list in '+who;
+  if(only('links'))return 'Edited links in '+who;
+  if(only('due','alerted'))return 'Changed due date of '+who;
+  return 'Edited '+who;
+}
+function goTo(i){
+  if(editing)finishEdit();checkpoint();
+  if(i<0||i>=hist.length||i===hi)return;
+  hi=i;S.nodes=JSON.parse(hist[i].json);
+  if(sel&&!N(sel)){sel=null;closePanel()}
+  render();if(sel||msel.size)renderPanel();save();updateHistUI();
+}
+function undo(){checkpoint();goTo(hi-1)}
+function redo(){goTo(hi+1)}
+const histEl=$('#histlist');
+function closeHist(){histEl.hidden=true}
+function ago(t){const s=Math.round((Date.now()-t)/1000);return s<45?'just now':s<3600?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago'}
+function renderHist(){
+  const rows=hist.map((h,i)=>({h,i})).reverse().map(({h,i})=>`<button class="hrow${i===hi?' cur':''}${i>hi?' future':''}" data-i="${i}"><span class="t">${esc(h.label)}</span><span class="d">${ago(h.t)}</span></button>`).join('');
+  histEl.innerHTML=`<div class="top"><span>History since you opened the page</span><button class="x" data-close aria-label="Close">×</button></div>
+  <div class="body"><div class="hl">${rows}</div><p class="hint" style="margin:0">Click a step to take the board back to that moment. Greyed steps are ones you undid; click them to redo.</p></div>`;
+}
+function updateHistUI(){$('#bUndo').disabled=hi<=0;$('#bRedo').disabled=hi>=hist.length-1;if(!histEl.hidden)renderHist()}
+$('#bUndo').onclick=undo;$('#bRedo').onclick=redo;
+$('#bHist').onclick=()=>{if(!histEl.hidden){closeHist();return}if(sel||msel.size)deselect();closeDue();checkpoint();renderHist();histEl.hidden=false};
+histEl.addEventListener('click',e=>{
+  if(e.target.closest('[data-close]')){closeHist();return}
+  const r=e.target.closest('[data-i]');if(r)goTo(+r.dataset.i);
+});
 
 /* ---------- boot ---------- */
 const had=load();
 if(!had)seed();
 applyView();render();
 if(!had)requestAnimationFrame(()=>{render();fit()});
+hist=[{json:snapNodes(),label:'Opened the page',t:Date.now()}];hi=0;updateHistUI();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{drawEdges()});
 checkReminders();
 initSync();

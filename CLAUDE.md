@@ -13,6 +13,7 @@ Core needs: nested groups, free placement, different text sizes, and per-task ch
   `{ id, parent (null = free-floating), x, y, title, size (1-4), color (optional hex; a coloured box is filled, text colour from `onColor`), done, due ("YYYY-MM-DD" or "YYYY-MM-DDTHH:MM"), items: [{id, text, done}], links: [{url, label}], side (optional 't'|'r'|'b'|'l': which side of the parent the connector leaves from), collapsed (optional true: hides all descendants), w/h (optional custom box width / min-height set with the corner handle) }`
 - Snapping: while dragging, `snapX` aligns edges/centres and matches gaps between neighbouring cards (y axis via `flip`); pink guides drawn in `#guides`; Alt/Option disables
 - Canvas: mouse drag on empty space draws a selection box (`g.type==='marquee'`, Shift adds); touch, middle button or Space+drag pans; wheel/trackpad pans
+- Undo/redo/History: `hist` = board snapshots since page load, `hi` = current; `save()` queues `checkpoint()` (500ms merge), `describe()` labels steps; remote sync changes become their own step
 - Selection: `sel` is the single selected card (side panel); `msel` is a Set for Shift+click multi-select (multi panel, group drag, bulk delete)
 - Rendering: `render()` rebuilds all cards into `#nodes`; `drawEdges()` draws bezier connectors in an SVG layer; `applyView()` handles pan and zoom via a CSS transform on `#world`
 - Each box has its own optional colour (`colorOf`); presets in `COLORS` plus a native colour picker. Connectors use `--edge` (white in dark mode, dark grey in light mode)
