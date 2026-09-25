@@ -249,6 +249,13 @@ body:not([data-view="branches"]) .canvas-only{display:none}
 .chip{display:block;width:100%;text-align:left;border:0;border-radius:5px;padding:2px 6px;font-size:12px;line-height:1.35;background:var(--chipbg,var(--card));color:var(--chipfg,var(--ink));
   border-left:3px solid var(--c);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 .chip.done{text-decoration:line-through;opacity:.6}
+.chip.ghost{opacity:.5;border-left-style:dashed}
+.rep{font-size:13px;line-height:1;color:var(--muted)}
+.filled .rep{color:var(--on);opacity:.85}
+.wdays{display:flex;gap:4px;flex-wrap:wrap}
+.wdays button{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--card);font-size:12px;font-weight:600;padding:0;color:var(--muted)}
+.wdays button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.repline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
 .chip.sel{outline:2px solid var(--accent)}
 .chip .tm{opacity:.75;margin-right:4px}
 .mgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
@@ -403,6 +410,45 @@ function reveal(id){let n=N(id),guard=0;while(n&&n.parent&&guard++<999){n=N(n.pa
 function desc(id){const out=[],st=[id];while(st.length){const c=st.pop();for(const k of kids(c)){out.push(k.id);st.push(k.id)}}return out}
 // a box shows a tick-box only when it's a task (older boxes that are already ticked count as tasks)
 const isTask=n=>!!n&&(n.task===true||(n.task===undefined&&n.done===true));
+/* ---------- repeating tasks ----------
+   n.repeat = {every:N, unit:'day'|'week'|'month'|'year', days:[0-6] (weeks: which weekdays, 0=Sun),
+               dom (month/year: day of month to keep), anchor ('YYYY-MM-DD', counts the N-week cycle), from:'done' (count from tick date)} */
+const WD=[1,2,3,4,5,6,0];  // Monday first
+function nextDue(n,forceFromDue){
+  const r=n.repeat,t=parseDue(n.due);if(!r||!t||isNaN(t))return null;
+  const time=n.due.includes('T')?'T'+n.due.split('T')[1]:'',k=Math.max(1,parseInt(r.every)||1);
+  const b0=r.from==='done'&&!forceFromDue?new Date():t,base=new Date(b0.getFullYear(),b0.getMonth(),b0.getDate());
+  const kd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const plus=(d,x)=>new Date(d.getFullYear(),d.getMonth(),d.getDate()+x);
+  let d=null;
+  if(r.unit==='day')d=plus(base,k);
+  else if(r.unit==='week'){
+    const days=r.days&&r.days.length?r.days:[t.getDay()];
+    const [ay,am,ad]=(r.anchor||kd(t)).split('-').map(Number),an=new Date(ay,am-1,ad),anMon=plus(an,-((an.getDay()+6)%7));
+    for(let i=1;i<=7*k+7;i++){const c=plus(base,i),mon=plus(c,-((c.getDay()+6)%7)),wk=Math.round((mon-anMon)/6048e5);
+      if(days.includes(c.getDay())&&((wk%k)+k)%k===0){d=c;break}}
+  }else if(r.unit==='month'||r.unit==='year'){
+    const m=r.unit==='month'?k:12*k,dom=r.dom||t.getDate(),y=base.getFullYear(),mo=base.getMonth()+m;
+    d=new Date(y,mo,Math.min(dom,new Date(y,mo+1,0).getDate()));
+  }
+  return d?kd(d)+time:null;
+}
+function repeatText(r){
+  if(!r)return '';const k=Math.max(1,parseInt(r.every)||1),pl=(w)=>k>1?`${k} ${w}s`:w;
+  const names=(r.days||[]).slice().sort((a,b)=>WD.indexOf(a)-WD.indexOf(b)).map(i=>new Date(2024,0,7+i).toLocaleDateString(undefined,{weekday:'short'}));
+  let t=r.unit==='day'?(k>1?`Every ${k} days`:'Every day'):r.unit==='week'?`Every ${pl('week')}${names.length?' on '+names.join(', '):''}`:
+    r.unit==='month'?`Every ${pl('month')}${r.dom?' on day '+r.dom:''}`:`Every ${pl('year')}`;
+  return t+(r.from==='done'?', counted from when ticked':'');
+}
+// tick a box: a repeating task rolls on to its next date instead of staying done
+function toggleDone(n){
+  if(n.repeat&&!n.done){
+    const nd=nextDue(n);
+    if(nd){n.due=nd;n.alerted=null;n.task=true;n.lastDone=new Date().toISOString().slice(0,10);(n.items||[]).forEach(i=>i.done=false);
+      const lbl=dueInfo(nd).label;nextLabel=`Done “${(n.title||'Untitled').slice(0,30)}”, next ${lbl}`;toast(`Done. Next: ${lbl}`);return}
+  }
+  n.done=!n.done;
+}
 const colorOf=id=>(N(id)&&N(id).color)||'';
 // white or dark text on a coloured box, by perceived brightness
 function onColor(hex){const m=/^#?([0-9a-f]{6})$/i.exec(hex||'');if(!m)return '#fff';const v=parseInt(m[1],16),r=v>>16,g=v>>8&255,b=v&255;
@@ -452,7 +498,8 @@ function cardHTML(n){
   let prog='';
   const d=desc(n.id).map(N).filter(isTask);if(d.length)prog=`<span class="prog">${d.filter(x=>x.done).length} of ${d.length} done</span>`;
   if(n.items&&n.items.length)prog+=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
-  const meta=(di||links||prog)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${prog}${links}</div>`:'';
+  const rp=n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'';
+  const meta=(di||links||prog||rp)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${rp}${prog}${links}</div>`:'';
   return `<div class="node s${n.size||2}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
 <div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span><span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
@@ -664,12 +711,20 @@ function renderPanel(){
     </div>
     <div class="field"><span class="fl">Task</span>
       <div class="row"><label class="tog"><input type="checkbox" id="pTask" ${isTask(n)?'checked':''}>It’s a task</label>
-      ${isTask(n)?`<button class="btn" data-act="toggleDone" style="border:1px solid var(--line);background:var(--card)">${n.done?'Mark not done':'Mark done'}</button>`:''}</div>
+      ${isTask(n)?`<button class="btn" data-act="toggleDone" style="border:1px solid var(--line);background:var(--card)">${n.done?'Mark not done':n.repeat?'Done this time':'Mark done'}</button>`:''}</div>
     </div>
     <div class="field"><span class="fl">Colour</span>${swatches(n.color,'color','pColor')}</div>
     <div class="field"><label for="pDate">Due date</label>
       <div class="row"><input class="inp grow" type="date" id="pDate" value="${esc(dv||'')}"><input class="inp" type="time" id="pTime" value="${esc(tv||'')}" ${dv?'':'disabled'} aria-label="Due time">
       ${n.due?`<button class="x" data-act="clearDue" aria-label="Clear due date">×</button>`:''}</div>
+    </div>
+    <div class="field"><span class="fl">Repeat</span>
+      <div class="row"><label class="tog"><input type="checkbox" id="pRep" ${n.repeat?'checked':''}>Repeats</label></div>
+      ${n.repeat?`<div class="repline">Every <input class="inp" type="number" min="1" max="999" id="pRepN" value="${esc(n.repeat.every||1)}" style="width:64px" aria-label="Repeat interval">
+        <select class="inp" id="pRepUnit" aria-label="Repeat unit">${[['day','days'],['week','weeks'],['month','months'],['year','years']].map(([v,l])=>`<option value="${v}" ${n.repeat.unit===v?'selected':''}>${l}</option>`).join('')}</select></div>
+      ${n.repeat.unit==='week'?`<div class="wdays">${WD.map(i=>`<button data-act="repday" data-v="${i}" class="${(n.repeat.days||[]).includes(i)?'on':''}" aria-label="${new Date(2024,0,7+i).toLocaleDateString(undefined,{weekday:'long'})}">${new Date(2024,0,7+i).toLocaleDateString(undefined,{weekday:'narrow'})}</button>`).join('')}</div>`:''}
+      <div class="row"><label class="tog"><input type="checkbox" id="pRepFrom" ${n.repeat.from==='done'?'checked':''}>Count from when I tick it</label></div>
+      <div class="hint">${esc(repeatText(n.repeat))}.${nextDue(n)?` After this one: ${esc(dueInfo(nextDue(n,true)).label)}.`:''}</div>`:''}
     </div>
     <div class="field"><span class="fl">List</span>
       <div class="plist">${(n.items||[]).map(i=>`<div class="pitem"><button class="pchk ${i.done?'on':''}" data-act="pitem" data-item="${i.id}" aria-label="Toggle item"></button><input class="inp" data-itemtext="${i.id}" value="${esc(i.text)}"><button class="x" data-act="delitem" data-item="${i.id}" aria-label="Remove item">×</button></div>`).join('')}</div>
@@ -696,11 +751,20 @@ panel.addEventListener('input',e=>{
   if(t.id==='mColor'){[...msel].map(N).filter(Boolean).forEach(n=>n.color=t.value);render();save();return}
   const n=N(sel);if(!n)return;
   if(t.id==='pColor'){n.color=t.value;render();save();return}
+  if(t.id==='pRep'){
+    if(t.checked){if(!n.due)n.due=dayKey(new Date());const d=parseDue(n.due);n.repeat={every:1,unit:'month',dom:d.getDate(),anchor:dayKey(d),days:[d.getDay()]};n.task=true;n.done=false}
+    else delete n.repeat;
+    delete n._new;render();renderPanel();save();return}
+  if(t.id==='pRepN'){n.repeat.every=Math.max(1,Math.min(999,parseInt(t.value)||1));render();save();return}
+  if(t.id==='pRepUnit'){n.repeat.unit=t.value;render();renderPanel();save();return}
+  if(t.id==='pRepFrom'){if(t.checked)n.repeat.from='done';else delete n.repeat.from;render();renderPanel();save();return}
   if(t.id==='pTask'){n.task=t.checked;if(!t.checked)n.done=false;delete n._new;render();renderPanel();save();return}
   if(t.id==='pTitle'){n.title=t.value;if(t.value)delete n._new}
   else if(t.dataset.itemtext){const i=n.items.find(i=>i.id===t.dataset.itemtext);if(i)i.text=t.value}
   else if(t.dataset.linklabel!==undefined){n.links[+t.dataset.linklabel].label=t.value}
   else if(t.id==='pDate'||t.id==='pTime'){const dv=$('#pDate').value,tv=$('#pTime').value;n.due=dv?dv+(tv?'T'+tv:''):'';n.alerted=null;delete n._new;
+    if(n.repeat&&dv){const d=parseDue(n.due);const r=n.repeat;if((r.days||[]).length===1)r.days=[d.getDay()];r.dom=d.getDate();r.anchor=dv}
+    if(n.repeat&&!dv)delete n.repeat;
     $('#pTime').disabled=!dv;render();save();if(t.id==='pDate'){renderPanel()}return}
   else return;
   render();save();
@@ -727,7 +791,8 @@ panel.addEventListener('click',e=>{
     else if(a==='mcolor')ns.forEach(n=>{if(b.dataset.v)n.color=b.dataset.v;else delete n.color});
     else if(a==='mtask')ns.forEach(n=>n.task=true);
     else if(a==='mnotask')ns.forEach(n=>{n.task=false;n.done=false});
-    else if(a==='mdone'||a==='mundone')ns.forEach(n=>{n.done=a==='mdone';if(n.done)n.task=true});
+    else if(a==='mdone')ns.forEach(n=>{n.task=true;if(n.repeat)toggleDone(n);else n.done=true});
+    else if(a==='mundone')ns.forEach(n=>n.done=false);
     render();renderPanel();save();return;
   }
   const n=N(sel);if(!n)return;
@@ -735,8 +800,9 @@ panel.addEventListener('click',e=>{
   else if(a==='size'){n.size=+b.dataset.v;delete n._new;render();renderPanel();save()}
   else if(a==='resetSize'){delete n.w;delete n.h;render();renderPanel();save()}
   else if(a==='color'){if(b.dataset.v)n.color=b.dataset.v;else delete n.color;render();renderPanel();save()}
-  else if(a==='toggleDone'){n.done=!n.done;render();renderPanel();save()}
-  else if(a==='clearDue'){n.due='';render();renderPanel();save()}
+  else if(a==='repday'){const r=n.repeat,v=+b.dataset.v,ds=new Set(r.days||[]);ds.has(v)?ds.delete(v):ds.add(v);if(ds.size)r.days=[...ds];render();renderPanel();save()}
+  else if(a==='toggleDone'){toggleDone(n);render();renderPanel();save()}
+  else if(a==='clearDue'){n.due='';delete n.repeat;render();renderPanel();save()}
   else if(a==='pitem'){const i=n.items.find(i=>i.id===b.dataset.item);i.done=!i.done;render();renderPanel();save()}
   else if(a==='delitem'){n.items=n.items.filter(i=>i.id!==b.dataset.item);render();renderPanel();save()}
   else if(a==='dellink'){n.links.splice(+b.dataset.i,1);render();renderPanel();save()}
@@ -762,7 +828,7 @@ nodesEl.addEventListener('click',e=>{
     if(sel&&hiddenNode(sel)){sel=null;closePanel()}
     render();if(msel.size)renderPanel();save();return;
   }
-  if(b.dataset.act==='done'){n.done=!n.done;delete n._new}
+  if(b.dataset.act==='done'){toggleDone(n);delete n._new}
   else if(b.dataset.act==='item'){const i=n.items.find(i=>i.id===b.dataset.item);if(i)i.done=!i.done}
   render();if(sel===id)renderPanel();save();
 });
@@ -1235,7 +1301,7 @@ function renderTasks(){
   const row=n=>{
     const di=dueInfo(n.due),path=pathOf(n),it=(n.items||[]).length?`${n.items.filter(i=>i.done).length}/${n.items.length} items`:'';
     const when=di?(di.cls==='over'||!di.hasTime?(di.cls==='over'?di.label:''):di.t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
-    const sub=[path,it].filter(Boolean).join(' · ');
+    const sub=[n.repeat?'↻ '+repeatText(n.repeat):'',path,it].filter(Boolean).join(' · ');
     return `<div class="trow${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)}">
       <button class="tchk" data-act="tdone" aria-label="${n.done?'Mark not done':'Mark done'}"></button>
       <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${sub?`<div class="ts">${esc(sub)}</div>`:''}</div>
@@ -1253,26 +1319,31 @@ listEl.addEventListener('click',e=>{
   if(b&&b.dataset.act==='tshowdone'){showDone=!showDone;renderTasks();return}
   if(!r){if(sel||msel.size)deselect();return}
   const id=r.dataset.id,n=N(id);if(!n)return;
-  if(b&&b.dataset.act==='tdone'){n.done=!n.done;n.task=true;render();if(sel===id)renderPanel();save();return}
+  if(b&&b.dataset.act==='tdone'){toggleDone(n);n.task=true;render();if(sel===id)renderPanel();save();return}
   if(b&&b.dataset.act==='tgo'){showOnBoard(id);return}
   select(id);
 });
 
 /* Calendar */
-function dueByDay(){
-  const m=new Map();
-  for(const n of all()){const di=dueInfo(n.due);if(!di)continue;const k=dayKey(di.t);if(!m.has(k))m.set(k,[]);m.get(k).push({n,di})}
+function dueByDay(until){
+  const m=new Map(),put=(k,x)=>{if(!m.has(k))m.set(k,[]);m.get(k).push(x)};
+  for(const n of all()){
+    const di=dueInfo(n.due);if(!di)continue;put(dayKey(di.t),{n,di});
+    // upcoming repeats, shown faded
+    if(n.repeat&&!n.done&&until){let cur={...n},g=0;
+      while(g++<400){const nd=nextDue(cur,true);if(!nd)break;const t=parseDue(nd);if(t>=until)break;put(dayKey(t),{n,di:dueInfo(nd),ghost:true});cur={...cur,due:nd}}}
+  }
   for(const l of m.values())l.sort((a,b)=>(a.di.hasTime?a.di.t:-1)-(b.di.hasTime?b.di.t:-1));
   return m;
 }
-function chip(n,di,style=''){
+function chip(n,di,style='',ghost){
   const c=n.color,time=di.hasTime?di.t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}):'';
   const colours=c?`--chipbg:${c};--chipfg:${onColor(c)};`:'';
-  return `<button class="chip${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${colours}${style}" title="${esc(n.title||'Untitled')}">${time?`<span class="tm">${esc(time)}</span>`:''}${esc(n.title||'Untitled')}</button>`;
+  return `<button class="chip${n.done?' done':''}${ghost?' ghost':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${colours}${style}" title="${esc(n.title||'Untitled')}">${time?`<span class="tm">${esc(time)}</span>`:''}${esc(n.title||'Untitled')}</button>`;
 }
 const HH=44;  // pixels per hour in day/week view
 function renderCal(){
-  const by=dueByDay(),today=dayKey(new Date()),d=calDate;
+  const d=calDate,by=dueByDay(calMode==='year'?new Date(d.getFullYear()+1,0,1):new Date(d.getFullYear(),d.getMonth()+2,8)),today=dayKey(new Date());
   let title='',body='';
   const wd=i=>fmt(addDays(new Date(2024,0,1),i),{weekday:'short'});  // 1 Jan 2024 was a Monday
   if(calMode==='month'){
@@ -1281,7 +1352,7 @@ function renderCal(){
     let cells='';
     for(let i=0;i<42;i++){
       const day=addDays(start,i),k=dayKey(day),items=by.get(k)||[],max=3;
-      cells+=`<div class="mcell${day.getMonth()!==d.getMonth()?' dim':''}${k===today?' today':''}" data-day="${k}"><button class="dn" data-goday="${k}">${day.getDate()}</button>${items.slice(0,max).map(x=>chip(x.n,x.di)).join('')}${items.length>max?`<button class="more" data-goday="${k}">+${items.length-max} more</button>`:''}</div>`;
+      cells+=`<div class="mcell${day.getMonth()!==d.getMonth()?' dim':''}${k===today?' today':''}" data-day="${k}"><button class="dn" data-goday="${k}">${day.getDate()}</button>${items.slice(0,max).map(x=>chip(x.n,x.di,'',x.ghost)).join('')}${items.length>max?`<button class="more" data-goday="${k}">+${items.length-max} more</button>`:''}</div>`;
     }
     body=`<div class="mgrid">${[0,1,2,3,4,5,6].map(i=>`<div class="dh">${wd(i)}</div>`).join('')}${cells}</div>`;
   }else if(calMode==='week'||calMode==='day'){
@@ -1289,7 +1360,7 @@ function renderCal(){
     if(calMode==='week'){const a=days[0],b=days[6];title=`${fmt(a,{day:'numeric',month:'short'})} – ${fmt(b,{day:'numeric',month:'short',year:'numeric'})}`}
     else title=fmt(d,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     const head=days.map(day=>`<div class="${dayKey(day)===today?'today':''}">${fmt(day,{weekday:'short'})}<button class="dn" data-goday="${dayKey(day)}">${day.getDate()}</button></div>`).join('');
-    const allday=days.map(day=>`<div data-day="${dayKey(day)}">${(by.get(dayKey(day))||[]).filter(x=>!x.di.hasTime).map(x=>chip(x.n,x.di)).join('')}</div>`).join('');
+    const allday=days.map(day=>`<div data-day="${dayKey(day)}">${(by.get(dayKey(day))||[]).filter(x=>!x.di.hasTime).map(x=>chip(x.n,x.di,'',x.ghost)).join('')}</div>`).join('');
     const hours=[...Array(24)].map((_,h)=>h?`<span style="top:${h*HH}px">${pad2(h)}:00</span>`:'').join('');
     const now=new Date(),nowTop=(now.getHours()+now.getMinutes()/60)*HH;
     const cols=days.map(day=>{
@@ -1298,7 +1369,7 @@ function renderCal(){
       const placed=[];let cluster=[];
       const flush=()=>{cluster.forEach((x,i)=>placed.push({...x,lane:i,lanes:cluster.length}));cluster=[]};
       for(const x of timed){if(cluster.length&&x.di.t-cluster[cluster.length-1].di.t>=36e5)flush();cluster.push(x)}flush();
-      const chips=placed.map(x=>{const top=(x.di.t.getHours()+x.di.t.getMinutes()/60)*HH;return chip(x.n,x.di,`top:${top}px;height:${HH-4}px;left:calc(${x.lane*100/x.lanes}% + 2px);width:calc(${100/x.lanes}% - 4px);`)}).join('');
+      const chips=placed.map(x=>{const top=(x.di.t.getHours()+x.di.t.getMinutes()/60)*HH;return chip(x.n,x.di,`top:${top}px;height:${HH-4}px;left:calc(${x.lane*100/x.lanes}% + 2px);width:calc(${100/x.lanes}% - 4px);`,x.ghost)}).join('');
       return `<div class="dcol${dayKey(day)===today?' today':''}" data-day="${dayKey(day)}" data-timed="1">${dayKey(day)===today?`<div class="nowline" style="top:${nowTop}px"></div>`:''}${chips}</div>`;
     }).join('');
     body=`<div class="tgwrap" style="--cols:${days.length};--hh:${HH}px">
@@ -1379,6 +1450,7 @@ function describe(a,b){
   if(only('items'))return 'Edited list in '+who;
   if(only('links'))return 'Edited links in '+who;
   if(only('due','alerted'))return 'Changed due date of '+who;
+  if(only('repeat','task','done','due'))return 'Changed repeat of '+who;
   return 'Edited '+who;
 }
 function goTo(i){
