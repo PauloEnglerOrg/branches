@@ -10,7 +10,7 @@ Core needs: nested groups, free placement, different text sizes, and per-task ch
 - Font: Bricolage Grotesque from Google Fonts, with system fallbacks
 - State: `S = { nodes: {id: Node}, view: {x, y, k} }`, saved to localStorage under key `branches.v1`
 - Node shape:
-  `{ id, parent (null for a subject), x, y, title, size (1-4), color (subjects only), done, due ("YYYY-MM-DD" or "YYYY-MM-DDTHH:MM"), items: [{id, text, done}], links: [{url, label}] }`
+  `{ id, parent (null for a subject), x, y, title, size (1-4), color (subjects only), done, due ("YYYY-MM-DD" or "YYYY-MM-DDTHH:MM"), items: [{id, text, done}], links: [{url, label}], side (optional 't'|'r'|'b'|'l': which side of the parent the connector leaves from) }`
 - Rendering: `render()` rebuilds all cards into `#nodes`; `drawEdges()` draws bezier connectors in an SVG layer; `applyView()` handles pan and zoom via a CSS transform on `#world`
 - Branch colour is inherited from the root subject (`colorOf`)
 - Side panel (`renderPanel`) edits the selected card; the due list is `renderDue`

@@ -66,6 +66,11 @@ button{cursor:pointer}
 .node.root .ph{color:rgba(255,255,255,.75)}
 .node.done .title{text-decoration:line-through;text-decoration-thickness:1.5px;color:var(--muted)}
 .node.done{opacity:.72}
+.addh{position:absolute;width:24px;height:24px;border-radius:50%;border:2px solid var(--paper);background:var(--c);color:#fff;padding:0;
+  font-size:17px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);z-index:1}
+.addh:hover{filter:brightness(1.12)}
+.addh.r{left:100%;top:50%;margin:-12px 0 0 9px}.addh.l{right:100%;top:50%;margin:-12px 9px 0 0}
+.addh.b{top:100%;left:50%;margin:9px 0 0 -12px}.addh.t{bottom:100%;left:50%;margin:0 0 9px -12px}
 .node .title[contenteditable]{user-select:text;-webkit-user-select:text;cursor:text;outline:none;min-width:2ch}
 .node .title[contenteditable]:empty::before{content:"Untitled";color:var(--muted);font-style:italic}
 .node.root .title[contenteditable]:empty::before{color:rgba(255,255,255,.75)}
@@ -311,26 +316,49 @@ function cardHTML(n){
   else if(n.items&&n.items.length)prog=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
   const meta=(di||links||prog)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${prog}${links}</div>`:'';
   return `<div class="node s${n.size||2}${isRoot?' root':''}${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${colorOf(n.id)}">
-<div class="head">${isRoot?'':`<button class="chk" data-act="done" aria-label="Mark done"></button>`}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}</div>`;
+<div class="head">${isRoot?'':`<button class="chk" data-act="done" aria-label="Mark done"></button>`}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}</div>`;
 }
 function render(){
-  if(editing)return;  // don't wipe a card while its text is being typed in place; finishEdit re-renders
+  if(editing){renderLater=true;return}  // don't wipe a card while its text is being typed in place
   nodesEl.innerHTML=all().map(cardHTML).join('');
   elMap={};nodesEl.querySelectorAll('.node').forEach(e=>elMap[e.dataset.id]=e);
   drawEdges();updateBadge();
   $('#empty').hidden=all().length>0;
+}
+/* which side of parent p the branch n leaves from: n.side if set (by the + buttons or a drag), else left/right,
+   or top/bottom when the card sits directly above or below its parent */
+function gaps(p,n){
+  const pe=elMap[p.id],ce=elMap[n.id],pw=pe?pe.offsetWidth:200,ph=pe?pe.offsetHeight:44,cw=ce?ce.offsetWidth:160,ch=ce?ce.offsetHeight:44;
+  const dx=(n.x+cw/2)-(p.x+pw/2),dy=(n.y+ch/2)-(p.y+ph/2);
+  return {dx,dy,gx:Math.abs(dx)-(pw+cw)/2,gy:Math.abs(dy)-(ph+ch)/2};
+}
+function sideOf(p,n){
+  if(n.side)return n.side;
+  const {dx,dy,gx,gy}=gaps(p,n);
+  return gx<0&&gy>0?(dy>0?'b':'t'):(dx>=0?'r':'l');
+}
+function updateSide(id){
+  const n=N(id),p=n&&n.parent&&N(n.parent);if(!p)return;
+  const {dx,dy,gx,gy}=gaps(p,n);
+  if(gx<0&&gy>0)n.side=dy>0?'b':'t';else if(gy<0&&gx>0)n.side=dx>0?'r':'l';  // diagonal: keep what it had
 }
 function drawEdges(){
   const out=[];
   for(const n of all()){
     const p=n.parent&&N(n.parent);if(!p)continue;
     const pe=elMap[p.id],ce=elMap[n.id];if(!pe||!ce)continue;
-    const pw=pe.offsetWidth,ph=pe.offsetHeight,cw=ce.offsetWidth,chh=ce.offsetHeight;
-    const right=(n.x+cw/2)>=(p.x+pw/2);
-    const x1=right?p.x+pw:p.x, x2=right?n.x:n.x+cw, y1=p.y+ph/2, y2=n.y+chh/2;
-    const dx=Math.max(28,Math.abs(x2-x1)/2)*(right?1:-1);
-    const c=colorOf(n.id);
-    out.push(`<path class="${n.done?'done':''}" stroke="${c}" d="M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}"/><circle cx="${x2}" cy="${y2}" r="3.2" fill="${c}"/>`);
+    const pw=pe.offsetWidth,ph=pe.offsetHeight,cw=ce.offsetWidth,chh=ce.offsetHeight,side=sideOf(p,n),c=colorOf(n.id);
+    let d,x2,y2;
+    if(side==='t'||side==='b'){
+      const down=side==='b',x1=p.x+pw/2,y1=down?p.y+ph:p.y;x2=n.x+cw/2;y2=down?n.y:n.y+chh;
+      const dy=Math.max(28,Math.abs(y2-y1)/2)*(down?1:-1);
+      d=`M${x1},${y1} C${x1},${y1+dy} ${x2},${y2-dy} ${x2},${y2}`;
+    }else{
+      const right=side==='r',x1=right?p.x+pw:p.x,y1=p.y+ph/2;x2=right?n.x:n.x+cw;y2=n.y+chh/2;
+      const dx=Math.max(28,Math.abs(x2-x1)/2)*(right?1:-1);
+      d=`M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
+    }
+    out.push(`<path class="${n.done?'done':''}" stroke="${c}" d="${d}"/><circle cx="${x2}" cy="${y2}" r="3.2" fill="${c}"/>`);
   }
   edges.innerHTML=out.join('');
 }
@@ -378,6 +406,29 @@ function addChild(pid){
     for(const k of base){const b=k.y+height(k.id);if(b>maxB){maxB=b;x=k.x}}y=maxB+16}
   const size=p.parent?Math.min(p.size||2,2):Math.max(1,(p.size||3)-1);
   return create({parent:pid,x,y,size:Math.min(size,2)});
+}
+function addChildDir(pid,dir){
+  if(dir==='r'){const id=addChild(pid);N(id).side='r';return id}
+  const p=N(pid),pw=elMap[pid]?elMap[pid].offsetWidth:200,ph=height(pid);
+  const size=Math.min(p.parent?Math.min(p.size||2,2):Math.max(1,(p.size||3)-1),2);
+  const row=kids(pid).filter(k=>sideOf(p,k)===dir),w=k=>elMap[k.id]?elMap[k.id].offsetWidth:160;
+  let x,y,alignRight=null,alignBottom=null;
+  if(dir==='l'){
+    if(row.length){const last=row.reduce((a,k)=>k.y+height(k.id)>a.y+height(a.id)?k:a);y=last.y+height(last.id)+16;alignRight=last.x+w(last)}
+    else{y=p.y;alignRight=p.x-90}
+    x=alignRight-160;
+  }else{
+    if(row.length){const last=row.reduce((a,k)=>k.x+w(k)>a.x+w(a)?k:a);x=last.x+w(last)+16;
+      if(dir==='b')y=last.y;else alignBottom=last.y+height(last.id)}
+    else{x=p.x;if(dir==='b')y=p.y+ph+56;else alignBottom=p.y-56}
+    if(dir==='t')y=alignBottom-44;
+  }
+  const id=create({parent:pid,x:Math.round(x),y:Math.round(y),size,side:dir});
+  render();  // measure the new card, then line it up against the side it grew from
+  const n=N(id);
+  if(alignRight!==null)n.x=Math.round(alignRight-elMap[id].offsetWidth);
+  if(alignBottom!==null)n.y=Math.round(alignBottom-elMap[id].offsetHeight);
+  return id;
 }
 function addSibling(id){
   const n=N(id);
@@ -497,16 +548,17 @@ function doAttach(target){
 /* ---------- card clicks (checkboxes) ---------- */
 nodesEl.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]');if(!b)return;const id=b.closest('.node').dataset.id;const n=N(id);
+  if(b.dataset.act==='add'){select(addChildDir(id,b.dataset.dir),true);return}
   if(b.dataset.act==='done'){n.done=!n.done;delete n._new}
   else if(b.dataset.act==='item'){const i=n.items.find(i=>i.id===b.dataset.item);if(i)i.done=!i.done}
   render();if(sel===id)renderPanel();save();
 });
 
 /* ---------- edit a card's text in place (double-click / double-tap) ---------- */
-let editing=null,editOrig='',lastTap={};
+let editing=null,editEl=null,editOrig='',renderLater=false,lastTap={};
 function startEdit(id){
   const n=N(id),el=elMap[id]&&elMap[id].querySelector('.title');if(!n||!el)return;
-  editing=id;editOrig=n.title||'';
+  editing=id;editEl=el;editOrig=n.title||'';renderLater=false;
   el.textContent=n.title||'';
   try{el.contentEditable='plaintext-only'}catch(_){el.contentEditable='true'}
   el.focus();
@@ -519,15 +571,21 @@ function startEdit(id){
   el.addEventListener('blur',finishEdit,{once:true});
 }
 function finishEdit(){
-  if(!editing)return;editing=null;
-  render();if(sel)renderPanel();save();
+  if(!editing)return;
+  const n=N(editing),el=editEl;editing=editEl=null;
+  // update just this card (a full render here would swap out a + button mid-click)
+  el.removeAttribute('contenteditable');
+  if(n){if(n.title)el.textContent=n.title;else el.innerHTML='<span class="ph">Untitled</span>'}
+  if(renderLater||!n)render();else{drawEdges();updateBadge()}
+  if(sel)renderPanel();save();
 }
 
 /* ---------- pointer: pan, drag, pinch ---------- */
 const pts=new Map();let g=null;
 canvas.addEventListener('pointerdown',e=>{
-  if(e.target.closest('button,a,[contenteditable]'))return;
+  if(e.target.closest('[contenteditable]'))return;
   if(editing)finishEdit();
+  if(e.target.closest('button,a'))return;
   pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{canvas.setPointerCapture(e.pointerId)}catch(_){}
   if(pts.size===2){const [a,b]=[...pts.values()];g={type:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),mx:(a.x+b.x)/2,my:(a.y+b.y)/2};return}
@@ -563,7 +621,8 @@ function endPointer(e){
   if(!g)return;
   if(g.type==='pinch'){if(pts.size===0)g=null;else g={type:'none'};save();return}
   if(g.type==='attach'){doAttach(g.id)}
-  else if(g.type==='drag'){if(g.moved)save();
+  else if(g.type==='drag'){
+    if(g.moved){updateSide(g.id);if(moveMode==='card')kids(g.id).forEach(k=>updateSide(k.id));drawEdges();save()}
     const id=g.id,now=Date.now(),dbl=!g.moved&&lastTap.id===id&&now-lastTap.t<400;
     lastTap=g.moved||dbl?{}:{id,t:now};
     if(sel!==id)select(id);else if(!g.moved)renderPanel();
