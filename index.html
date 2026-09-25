@@ -10,7 +10,7 @@
 <style>
 :root{
   --paper:#E3E6E9; --dot:#BFC5CB; --card:#FBFCFC; --ink:#1B2025; --muted:#66707A; --line:#D0D5DA;
-  --accent:#2E57E6; --warn:#CF3429; --soon:#A86A12; --panel:#F5F6F7; --hover:#E9ECEF;
+  --accent:#2E57E6; --warn:#CF3429; --soon:#A86A12; --panel:#F5F6F7; --hover:#E9ECEF; --guide:#E0356E;
   --shadow:0 1px 0 rgba(27,32,37,.05),0 8px 20px -10px rgba(27,32,37,.35);
   color-scheme:light;
   box-sizing:border-box;
@@ -20,14 +20,14 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --paper:#14171A; --dot:#2A3036; --card:#1F2328; --ink:#E6E9EC; --muted:#8C96A0; --line:#31373E;
-    --accent:#809DFF; --warn:#FF6A5C; --soon:#E2A94B; --panel:#1A1D21; --hover:#262B31;
+    --accent:#809DFF; --warn:#FF6A5C; --soon:#E2A94B; --panel:#1A1D21; --hover:#262B31; --guide:#FF5C93;
     --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 24px -10px rgba(0,0,0,.7);
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --paper:#14171A; --dot:#2A3036; --card:#1F2328; --ink:#E6E9EC; --muted:#8C96A0; --line:#31373E;
-  --accent:#809DFF; --warn:#FF6A5C; --soon:#E2A94B; --panel:#1A1D21; --hover:#262B31;
+  --accent:#809DFF; --warn:#FF6A5C; --soon:#E2A94B; --panel:#1A1D21; --hover:#262B31; --guide:#FF5C93;
   --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 24px -10px rgba(0,0,0,.7);
   color-scheme:dark;
 }
@@ -50,6 +50,8 @@ button{cursor:pointer}
 #edges path{fill:none;stroke-width:2.2;stroke-linecap:round}
 #edges path.done{stroke-dasharray:3 6;opacity:.55}
 #edges circle{stroke:none}
+#guides{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none}
+#guides path{fill:none;stroke:var(--guide)}
 
 /* Cards */
 .node{position:absolute;background:var(--card);border:1px solid var(--line);border-radius:10px;
@@ -193,6 +195,7 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
     <div id="world">
       <svg id="edges"></svg>
       <div id="nodes"></div>
+      <svg id="guides"></svg>
     </div>
   </div>
   <div id="empty" hidden>Double-click anywhere, or use New subject, to start a branch.</div>
@@ -663,6 +666,55 @@ canvas.addEventListener('pointerdown',e=>{
     g={type:'pan',sx:e.clientX,sy:e.clientY,vx:S.view.x,vy:S.view.y,moved:false};
   }
 });
+/* ---------- snapping while dragging: edges, centres and matching gaps (hold Alt/Option to place freely) ---------- */
+const guidesEl=$('#guides');
+function rectOf(id){const n=N(id),e=elMap[id];return {x:n.x,y:n.y,w:e?e.offsetWidth:160,h:e?e.offsetHeight:44}}
+const flip=r=>({x:r.y,y:r.x,w:r.h,h:r.w});
+// neighbouring side-by-side pairs of cards and the gap between them (x axis; call with flipped rects for y)
+function gapPairs(refs){
+  const out=[];
+  for(const a of refs){let best=null;
+    for(const b of refs){if(b===a||!(a.y<b.y+b.h&&b.y<a.y+a.h))continue;const d=b.x-(a.x+a.w);if(d>0&&d<600&&(!best||d<best.d))best={d,a,b}}
+    if(best)out.push(best)}
+  return out;
+}
+function snapPrep(moving,id){
+  const refs=Object.keys(elMap).filter(i=>!moving.has(i)).map(rectOf),fl=refs.map(flip);
+  return {me:rectOf(id),refs,fl,px:gapPairs(refs),py:gapPairs(fl)};
+}
+// best x adjustment within T for rect r; returns {d, segs(finalRect)} with segments as [x1,y1,x2,y2]
+function snapX(r,refs,pairs,T){
+  let best=null;const take=(d,segs)=>{if(Math.abs(d)<=T&&(!best||Math.abs(d)<Math.abs(best.d)-.01))best={d,segs}};
+  const lines=f=>[f.x,f.x+f.w/2,f.x+f.w];
+  for(const f of refs)for(const a of lines(f))for(const m of [0,r.w/2,r.w])take(a-(r.x+m),fr=>{
+    const hit=refs.filter(o=>lines(o).some(v=>Math.abs(v-a)<.6));
+    const ys=[fr.y,fr.y+fr.h,...hit.flatMap(o=>[o.y,o.y+o.h])];
+    return [[a,Math.min(...ys)-8,a,Math.max(...ys)+8]];
+  });
+  const ov=f=>f.y<r.y+r.h&&r.y<f.y+f.h,cx=r.x+r.w/2;let L=null,R=null;
+  for(const f of refs){if(!ov(f))continue;
+    if(f.x+f.w<=cx&&(!L||f.x+f.w>L.x+L.w))L=f;
+    if(f.x>=cx&&(!R||f.x<R.x))R=f}
+  const mid=(a,b)=>(Math.max(a.y,b.y)+Math.min(a.y+a.h,b.y+b.h))/2;
+  const gapSegs=(d,fr)=>{
+    const segs=[];
+    if(L&&Math.abs(fr.x-(L.x+L.w)-d)<1)segs.push([L.x+L.w,mid(L,fr),fr.x,mid(L,fr)]);
+    if(R&&Math.abs(R.x-(fr.x+fr.w)-d)<1)segs.push([fr.x+fr.w,mid(R,fr),R.x,mid(R,fr)]);
+    for(const p of pairs)if(Math.abs(p.d-d)<1)segs.push([p.a.x+p.a.w,mid(p.a,p.b),p.b.x,mid(p.a,p.b)]);
+    return segs.flatMap(([x1,y,x2])=>[[x1,y,x2,y],[x1,y-4,x1,y+4],[x2,y-4,x2,y+4]]);
+  };
+  for(const p of pairs){
+    if(L)take(L.x+L.w+p.d-r.x,fr=>gapSegs(p.d,fr));
+    if(R)take(R.x-p.d-(r.x+r.w),fr=>gapSegs(p.d,fr));
+  }
+  if(L&&R){const x=(L.x+L.w+R.x-r.w)/2,d=x-(L.x+L.w);if(d>0)take(x-r.x,fr=>gapSegs(d,fr))}
+  return best;
+}
+function drawGuides(segs){
+  const k=S.view.k;
+  guidesEl.innerHTML=segs.length?`<path stroke-width="${1.2/k}" d="${segs.map(([a,b,c,d])=>`M${a},${b}L${c},${d}`).join('')}"/>`:'';
+}
+
 canvas.addEventListener('pointermove',e=>{
   if(!pts.has(e.pointerId)||!g)return;
   pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -674,13 +726,23 @@ canvas.addEventListener('pointermove',e=>{
   if(!g.moved&&Math.hypot(dx,dy)<4)return;g.moved=true;
   if(g.type==='pan'){canvas.classList.add('panning');S.view.x=g.vx+dx;S.view.y=g.vy+dy;applyView()}
   else if(g.type==='drag'){
-    const k=S.view.k;
-    for(const [i,ox,oy] of g.orig){const n=N(i);n.x=Math.round(ox+dx/k);n.y=Math.round(oy+dy/k);const el=elMap[i];if(el){el.style.left=n.x+'px';el.style.top=n.y+'px'}}
+    const k=S.view.k;let mx=dx/k,my=dy/k,segs=[];
+    if(!e.altKey){
+      if(!g.snap)g.snap=snapPrep(new Set(g.orig.map(o=>o[0])),g.id);
+      const p=g.snap,T=7/k,r={...p.me,x:p.me.x+mx,y:p.me.y+my};
+      const sx=snapX(r,p.refs,p.px,T),sy=snapX(flip(r),p.fl,p.py,T);
+      if(sx)mx+=sx.d;if(sy)my+=sy.d;
+      const fr={...p.me,x:p.me.x+mx,y:p.me.y+my};
+      if(sx)segs.push(...sx.segs(fr));
+      if(sy)segs.push(...sy.segs(flip(fr)).map(([a,b,c,d])=>[b,a,d,c]));
+    }
+    drawGuides(segs);
+    for(const [i,ox,oy] of g.orig){const n=N(i);n.x=Math.round(ox+mx);n.y=Math.round(oy+my);const el=elMap[i];if(el){el.style.left=n.x+'px';el.style.top=n.y+'px'}}
     drawEdges();
   }
 });
 function endPointer(e){
-  if(!pts.has(e.pointerId))return;pts.delete(e.pointerId);
+  if(!pts.has(e.pointerId))return;pts.delete(e.pointerId);drawGuides([]);
   if(!g)return;
   if(g.type==='pinch'){if(pts.size===0)g=null;else g={type:'none'};save();return}
   if(g.type==='attach'){doAttach(g.id)}
