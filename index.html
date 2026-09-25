@@ -87,6 +87,12 @@ button{cursor:pointer}
 .fold:hover{transform:scale(1.2)}
 .rsz{position:absolute;right:-6px;bottom:-6px;width:11px;height:11px;border-radius:3px;background:var(--card);border:1.5px solid var(--c);cursor:nwse-resize;z-index:2;touch-action:none}
 .rsz::after{content:"";position:absolute;inset:-9px}
+.lnkh{position:absolute;right:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;border:2px solid var(--paper);
+  display:flex;align-items:center;justify-content:center;cursor:crosshair;z-index:2;touch-action:none;box-shadow:var(--shadow)}
+.lnkh::after{content:"";position:absolute;inset:-8px}
+.lnkh svg{pointer-events:none}
+.node.droptarget{outline:2px dashed var(--accent);outline-offset:4px}
+#guides path.linkline{stroke:var(--accent);stroke-dasharray:6 5;stroke-linecap:round}
 .fold.r{left:100%;top:50%;margin:-9px 0 0 -9px}.fold.l{right:100%;top:50%;margin:-9px -9px 0 0}
 .fold.b{top:100%;left:50%;margin:-9px 0 0 -9px}.fold.t{bottom:100%;left:50%;margin:0 0 -9px -9px}
 .node .title[contenteditable]{user-select:text;-webkit-user-select:text;cursor:text;outline:none;min-width:2ch}
@@ -361,7 +367,7 @@ function cardHTML(n){
   if(n.items&&n.items.length)prog+=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
   const meta=(di||links||prog)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${prog}${links}</div>`:'';
   return `<div class="node s${n.size||2}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
-<div class="head"><button class="chk" data-act="done" aria-label="Mark done"></button><div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}</div>`;
+<div class="head"><button class="chk" data-act="done" aria-label="Mark done"></button><div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span><span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
 function foldHTML(n){
   const ks=kids(n.id);if(!ks.length)return '';
@@ -647,7 +653,7 @@ panel.addEventListener('click',e=>{
 function doAttach(target){
   const from=attachFrom;attachFrom=null;canvas.classList.remove('attaching');
   if(!target){toast('Attach cancelled');return}
-  if(target===from||desc(from).includes(target)){toast('A card can’t go under its own branch');return}
+  if(target===from||desc(from).includes(target)){toast('A box can’t go under its own branch');return}
   const n=N(from);n.parent=target;delete n.side;delete N(target).collapsed;render();renderPanel();save();toast('Linked');
 }
 
@@ -697,6 +703,12 @@ canvas.addEventListener('pointerdown',e=>{
   if(e.target.closest('[contenteditable]'))return;
   if(editing)finishEdit();
   if(e.target.closest('button,a'))return;
+  const lk=e.target.closest('.lnkh');
+  if(lk&&pts.size===0){
+    const id=lk.closest('.node').dataset.id;
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});try{canvas.setPointerCapture(e.pointerId)}catch(_){}
+    g={type:'link',id,sx:e.clientX,sy:e.clientY,moved:false,over:null};return;
+  }
   const rz=e.target.closest('.rsz');
   if(rz&&pts.size===0){
     const id=rz.closest('.node').dataset.id,el=elMap[id];
@@ -790,6 +802,14 @@ canvas.addEventListener('pointermove',e=>{
     for(const id in elMap){const r=rectOf(id);if(r.x<wx1&&r.x+r.w>wx0&&r.y<wy1&&r.y+r.h>wy0)g.hits.add(id)}
     for(const id in elMap)elMap[id].classList.toggle('sel',g.hits.has(id));
   }
+  else if(g.type==='link'){
+    // dashed line from the box to the pointer; highlight the box underneath
+    const cr=canvas.getBoundingClientRect(),v=S.view,src=rectOf(g.id);
+    const px=(e.clientX-cr.left-v.x)/v.k,py=(e.clientY-cr.top-v.y)/v.k,sx=src.x+src.w/2,sy=src.y+src.h/2;
+    guidesEl.innerHTML=`<path class="linkline" stroke-width="${2/v.k}" d="M${sx},${sy}L${px},${py}"/>`;
+    const under=document.elementFromPoint(e.clientX,e.clientY),ne=under&&under.closest('.node'),over=ne&&ne.dataset.id!==g.id?ne.dataset.id:null;
+    if(over!==g.over){if(g.over&&elMap[g.over])elMap[g.over].classList.remove('droptarget');if(over)elMap[over].classList.add('droptarget');g.over=over}
+  }
   else if(g.type==='resize'){
     const k=S.view.k,n=N(g.id),el=elMap[g.id];if(!n||!el)return;
     let w=Math.max(120,g.ow+dx/k),h=Math.max(36,g.oh+dy/k),segs=[];
@@ -827,6 +847,14 @@ function endPointer(e){
   if(g.type==='pinch'){if(pts.size===0)g=null;else g={type:'none'};save();return}
   if(g.type==='attach'){doAttach(g.id)}
   else if(g.type==='resize'){if(g.moved){delete N(g.id)._new;render();renderPanel();save()}}
+  else if(g.type==='link'){
+    if(g.over&&elMap[g.over])elMap[g.over].classList.remove('droptarget');
+    attachFrom=g.id;
+    if(!g.moved){canvas.classList.add('attaching');toast('Tap the box to link it under, or empty space to cancel')}
+    else if(!g.over){attachFrom=null;toast('Drop onto a box to link')}
+    else if(N(g.id).parent===g.over){attachFrom=null;toast('Already linked there')}
+    else doAttach(g.over);
+  }
   else if(g.type==='drag'){
     if(g.moved){for(const b of g.base){updateSide(b);if(moveMode==='card')kids(b).forEach(k=>updateSide(k.id))}drawEdges();save()}
     const id=g.id;
