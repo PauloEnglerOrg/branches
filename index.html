@@ -69,8 +69,13 @@ button{cursor:pointer}
 .addh{position:absolute;width:24px;height:24px;border-radius:50%;border:2px solid var(--paper);background:var(--c);color:#fff;padding:0;
   font-size:17px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);z-index:1}
 .addh:hover{filter:brightness(1.12)}
-.addh.r{left:100%;top:50%;margin:-12px 0 0 9px}.addh.l{right:100%;top:50%;margin:-12px 9px 0 0}
-.addh.b{top:100%;left:50%;margin:9px 0 0 -12px}.addh.t{bottom:100%;left:50%;margin:0 0 9px -12px}
+.addh.r{left:100%;top:50%;margin:-12px 0 0 22px}.addh.l{right:100%;top:50%;margin:-12px 22px 0 0}
+.addh.b{top:100%;left:50%;margin:22px 0 0 -12px}.addh.t{bottom:100%;left:50%;margin:0 0 22px -12px}
+.fold{position:absolute;width:18px;height:18px;border-radius:50%;border:1.5px solid var(--c);background:var(--card);color:var(--c);padding:0;
+  font-size:14px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;z-index:2}
+.fold:hover{transform:scale(1.2)}
+.fold.r{left:100%;top:50%;margin:-9px 0 0 -9px}.fold.l{right:100%;top:50%;margin:-9px -9px 0 0}
+.fold.b{top:100%;left:50%;margin:-9px 0 0 -9px}.fold.t{bottom:100%;left:50%;margin:0 0 -9px -9px}
 .node .title[contenteditable]{user-select:text;-webkit-user-select:text;cursor:text;outline:none;min-width:2ch}
 .node .title[contenteditable]:empty::before{content:"Untitled";color:var(--muted);font-style:italic}
 .node.root .title[contenteditable]:empty::before{color:rgba(255,255,255,.75)}
@@ -260,12 +265,15 @@ const $=s=>document.querySelector(s);
 const canvas=$('#canvas'), world=$('#world'), edges=$('#edges'), nodesEl=$('#nodes');
 const panel=$('#panel'), duelist=$('#duelist');
 let S={nodes:{},view:{x:0,y:0,k:1}};
-let sel=null, moveMode='branch', attachFrom=null, elMap={};
+let sel=null, msel=new Set(), moveMode='branch', attachFrom=null, elMap={};
 
 const uid=()=>Math.random().toString(36).slice(2,10);
 const N=id=>S.nodes[id];
 const all=()=>Object.values(S.nodes);
 const kids=id=>all().filter(n=>n.parent===id);
+function hiddenNode(id){let n=N(id),guard=0;while(n&&n.parent&&guard++<999){n=N(n.parent);if(n&&n.collapsed)return true}return false}
+const visible=()=>all().filter(n=>!hiddenNode(n.id));
+function reveal(id){let n=N(id),guard=0;while(n&&n.parent&&guard++<999){n=N(n.parent);if(n)delete n.collapsed}}
 function desc(id){const out=[],st=[id];while(st.length){const c=st.pop();for(const k of kids(c)){out.push(k.id);st.push(k.id)}}return out}
 function rootOf(id){let n=N(id),guard=0;while(n&&n.parent&&N(n.parent)&&guard++<999)n=N(n.parent);return n}
 const colorOf=id=>(rootOf(id)&&rootOf(id).color)||COLORS[0];
@@ -315,12 +323,20 @@ function cardHTML(n){
   if(isRoot){const d=desc(n.id).map(N);if(d.length)prog=`<span class="prog">${d.filter(x=>x.done).length} of ${d.length} done</span>`}
   else if(n.items&&n.items.length)prog=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
   const meta=(di||links||prog)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${prog}${links}</div>`:'';
-  return `<div class="node s${n.size||2}${isRoot?' root':''}${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${colorOf(n.id)}">
-<div class="head">${isRoot?'':`<button class="chk" data-act="done" aria-label="Mark done"></button>`}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}</div>`;
+  return `<div class="node s${n.size||2}${isRoot?' root':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${colorOf(n.id)}">
+<div class="head">${isRoot?'':`<button class="chk" data-act="done" aria-label="Mark done"></button>`}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}</div>`;
+}
+function foldHTML(n){
+  const ks=kids(n.id);if(!ks.length)return '';
+  const count={};for(const k of ks){const d=sideOf(n,k);count[d]=(count[d]||0)+1}
+  const side=Object.keys(count).reduce((a,b)=>count[b]>count[a]?b:a);
+  const hid=desc(n.id).length,label=n.collapsed?`Show ${hid} hidden card${hid>1?'s':''}`:'Collapse this branch';
+  return `<button class="fold ${side}" data-act="fold" aria-label="${label}" title="${label}">${n.collapsed?'+':'−'}</button>`;
 }
 function render(){
   if(editing){renderLater=true;return}  // don't wipe a card while its text is being typed in place
-  nodesEl.innerHTML=all().map(cardHTML).join('');
+  for(const id of msel)if(!N(id)||hiddenNode(id))msel.delete(id);
+  nodesEl.innerHTML=visible().map(cardHTML).join('');
   elMap={};nodesEl.querySelectorAll('.node').forEach(e=>elMap[e.dataset.id]=e);
   drawEdges();updateBadge();
   $('#empty').hidden=all().length>0;
@@ -373,7 +389,7 @@ function zoomAt(cx,cy,f){
   const px=cx-r.left,py=cy-r.top;v.x=px-(px-v.x)*(k2/v.k);v.y=py-(py-v.y)*(k2/v.k);v.k=k2;applyView();save();
 }
 function fit(){
-  const ns=all();if(!ns.length){S.view={x:0,y:0,k:1};applyView();return}
+  const ns=visible();if(!ns.length){S.view={x:0,y:0,k:1};applyView();return}
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   for(const n of ns){const e=elMap[n.id];const w=e?e.offsetWidth:200,h=e?e.offsetHeight:50;x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+w);y1=Math.max(y1,n.y+h)}
   const r=canvas.getBoundingClientRect(),small=r.width<720;
@@ -395,6 +411,7 @@ function ensureVisible(id){
 function create(o){
   const id=uid();
   S.nodes[id]={id,parent:null,x:0,y:0,title:'',size:2,done:false,due:'',items:[],links:[],_new:true,...o};
+  if(o.parent&&N(o.parent))delete N(o.parent).collapsed;
   if(!S.nodes[id].parent&&!S.nodes[id].color){const used=all().filter(n=>!n.parent).length-1;S.nodes[id].color=COLORS[used%COLORS.length]}
   save();return id;
 }
@@ -441,28 +458,58 @@ function addSibling(id){
 }
 function isEmpty(n){return n&&n._new&&!n.title&&!(n.items||[]).length&&!(n.links||[]).length&&!n.due&&!kids(n.id).length}
 let undoSnap=null;
-function del(id){
-  const n=N(id);if(!n)return;const ids=[id,...desc(id)];
+function del(id){delMany([id])}
+function delMany(list){
+  list=list.filter(N);if(!list.length)return;
+  const ids=[...new Set(list.flatMap(i=>[i,...desc(i)]))],n=N(list[0]),extra=ids.length-list.length;
   undoSnap=ids.map(i=>JSON.parse(JSON.stringify(N(i))));
   ids.forEach(i=>delete S.nodes[i]);
-  sel=null;closePanel();render();save();
-  toast(ids.length>1?`Deleted “${n.title||'Untitled'}” and ${ids.length-1} branch${ids.length>2?'es':''}`:`Deleted “${n.title||'Untitled'}”`,'Undo',()=>{
-    undoSnap.forEach(s=>S.nodes[s.id]=s);undoSnap=null;render();save();select(id)});
+  sel=null;msel.clear();closePanel();render();save();
+  const what=list.length>1?`${list.length} cards`:`“${n.title||'Untitled'}”`;
+  toast(`Deleted ${what}`+(extra?` and ${extra} branch${extra>1?'es':''}`:''),'Undo',()=>{
+    undoSnap.forEach(s=>S.nodes[s.id]=s);undoSnap=null;render();save();if(list.length===1)select(list[0])});
 }
 
 /* ---------- selection & panel ---------- */
 function select(id,focus){
-  const prev=sel;sel=id;
+  const prev=sel;sel=id;msel.clear();reveal(id);
   if(prev&&prev!==id&&isEmpty(N(prev)))delete S.nodes[prev];
   closeDue();render();renderPanel();ensureVisible(id);
   if(focus){const t=$('#pTitle');if(t){t.focus();t.setSelectionRange(t.value.length,t.value.length)}}
 }
 function deselect(){
   if(sel&&isEmpty(N(sel)))delete S.nodes[sel];
-  sel=null;closePanel();render();save();
+  sel=null;msel.clear();closePanel();render();save();
+}
+/* Shift+click adds a card to (or removes it from) a multi-selection */
+function toggleMulti(id){
+  if(!msel.size&&sel&&sel!==id&&!isEmpty(N(sel)))msel.add(sel);
+  if(sel&&isEmpty(N(sel))&&sel!==id)delete S.nodes[sel];
+  msel.has(id)?msel.delete(id):msel.add(id);
+  if(!msel.size){deselect();return}
+  if(msel.size===1){select([...msel][0]);return}
+  sel=null;closeDue();render();renderPanel();
+}
+function renderMultiPanel(){
+  const ns=[...msel].map(N),sz=ns.every(n=>(n.size||2)===(ns[0].size||2))?(ns[0].size||2):0;
+  panel.innerHTML=`
+  <div class="top"><span>${ns.length} cards selected</span><button class="x" data-act="close" aria-label="Clear selection">×</button></div>
+  <div class="body">
+    <div class="field"><span class="fl">Text size</span>
+      <div class="row"><div class="seg">${[1,2,3,4].map(s=>`<button data-act="msize" data-v="${s}" class="${sz===s?'on':''}">${['S','M','L','XL'][s-1]}</button>`).join('')}</div></div>
+    </div>
+    <div class="actions">
+      <button class="btn" data-act="mdone">Mark done</button>
+      <button class="btn" data-act="mundone">Mark not done</button>
+      <button class="btn danger" data-act="mdelete">Delete ${ns.length}</button>
+    </div>
+    <p class="hint" style="margin:0">Shift-click a card to add or remove it. Drag any selected card to move them all.</p>
+  </div>`;
+  panel.hidden=false;
 }
 function closePanel(){panel.hidden=true;panel.innerHTML=''}
 function renderPanel(){
+  if(msel.size>1){renderMultiPanel();return}
   const n=N(sel);if(!n){closePanel();return}
   const isRoot=!n.parent;const [dv,tv]=(n.due||'').split('T');
   const active=document.activeElement&&document.activeElement.id;
@@ -524,7 +571,16 @@ panel.addEventListener('keydown',e=>{
   }else if(t.dataset.itemtext&&e.key==='Enter'){e.preventDefault();$('#pNewItem').focus()}
 });
 panel.addEventListener('click',e=>{
-  const b=e.target.closest('[data-act]');if(!b)return;const n=N(sel);if(!n)return;const a=b.dataset.act;
+  const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
+  if(msel.size>1){
+    const ns=[...msel].map(N).filter(Boolean);
+    if(a==='close'){deselect();return}
+    if(a==='mdelete'){delMany([...msel]);return}
+    if(a==='msize')ns.forEach(n=>n.size=+b.dataset.v);
+    else if(a==='mdone'||a==='mundone')ns.forEach(n=>{if(n.parent)n.done=a==='mdone'});
+    render();renderPanel();save();return;
+  }
+  const n=N(sel);if(!n)return;
   if(a==='close')deselect();
   else if(a==='size'){n.size=+b.dataset.v;delete n._new;render();renderPanel();save()}
   else if(a==='color'){n.color=b.dataset.v;render();renderPanel();save()}
@@ -543,13 +599,18 @@ function doAttach(target){
   const from=attachFrom;attachFrom=null;canvas.classList.remove('attaching');
   if(!target){toast('Attach cancelled');return}
   if(target===from||desc(from).includes(target)){toast('A card can’t go under its own branch');return}
-  const n=N(from);n.parent=target;if((n.size||2)>2)n.size=2;render();renderPanel();save();toast('Attached');
+  const n=N(from);n.parent=target;delete N(target).collapsed;if((n.size||2)>2)n.size=2;render();renderPanel();save();toast('Attached');
 }
 
 /* ---------- card clicks (checkboxes) ---------- */
 nodesEl.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]');if(!b)return;const id=b.closest('.node').dataset.id;const n=N(id);
   if(b.dataset.act==='add'){select(addChildDir(id,b.dataset.dir),true);return}
+  if(b.dataset.act==='fold'){
+    if(n.collapsed)delete n.collapsed;else n.collapsed=true;
+    if(sel&&hiddenNode(sel)){sel=null;closePanel()}
+    render();if(msel.size)renderPanel();save();return;
+  }
   if(b.dataset.act==='done'){n.done=!n.done;delete n._new}
   else if(b.dataset.act==='item'){const i=n.items.find(i=>i.id===b.dataset.item);if(i)i.done=!i.done}
   render();if(sel===id)renderPanel();save();
@@ -595,8 +656,9 @@ canvas.addEventListener('pointerdown',e=>{
   if(ne){
     const id=ne.dataset.id;
     if(attachFrom){g={type:'attach',id};return}
-    const ids=moveMode==='branch'?[id,...desc(id)]:[id];
-    g={type:'drag',id,sx:e.clientX,sy:e.clientY,orig:ids.map(i=>[i,N(i).x,N(i).y]),moved:false};
+    const base=msel.has(id)?[...msel]:[id];  // dragging a selected card moves the whole selection
+    const ids=[...new Set(base.flatMap(i=>moveMode==='branch'?[i,...desc(i)]:[i]))];
+    g={type:'drag',id,base,shift:e.shiftKey,sx:e.clientX,sy:e.clientY,orig:ids.map(i=>[i,N(i).x,N(i).y]),moved:false};
   }else{
     g={type:'pan',sx:e.clientX,sy:e.clientY,vx:S.view.x,vy:S.view.y,moved:false};
   }
@@ -623,13 +685,16 @@ function endPointer(e){
   if(g.type==='pinch'){if(pts.size===0)g=null;else g={type:'none'};save();return}
   if(g.type==='attach'){doAttach(g.id)}
   else if(g.type==='drag'){
-    if(g.moved){updateSide(g.id);if(moveMode==='card')kids(g.id).forEach(k=>updateSide(k.id));drawEdges();save()}
-    const id=g.id,now=Date.now(),dbl=!g.moved&&lastTap.id===id&&now-lastTap.t<400;
+    if(g.moved){for(const b of g.base){updateSide(b);if(moveMode==='card')kids(b).forEach(k=>updateSide(k.id))}drawEdges();save()}
+    const id=g.id;
+    if(g.shift&&!g.moved){toggleMulti(id);lastTap={};g=null;return}
+    if(g.moved&&msel.has(id)){g=null;return}
+    const now=Date.now(),dbl=!g.moved&&lastTap.id===id&&now-lastTap.t<400;
     lastTap=g.moved||dbl?{}:{id,t:now};
     if(sel!==id)select(id);else if(!g.moved)renderPanel();
     if(dbl)startEdit(id);
   }
-  else if(g.type==='pan'){canvas.classList.remove('panning');if(g.moved)save();else if(attachFrom)doAttach(null);else if(sel)deselect()}
+  else if(g.type==='pan'){canvas.classList.remove('panning');if(g.moved)save();else if(attachFrom)doAttach(null);else if(sel||msel.size)deselect()}
   g=null;
 }
 canvas.addEventListener('pointerup',endPointer);
@@ -727,9 +792,11 @@ document.addEventListener('keydown',e=>{
     if(!$('#modal').hidden){$('#modal').hidden=true;return}
     if(typing){e.target.blur();return}
     if(!duelist.hidden){closeDue();return}
-    if(sel)deselect();return;
+    if(sel||msel.size)deselect();return;
   }
-  if(typing||!sel||!$('#modal').hidden)return;
+  if(typing||!$('#modal').hidden)return;
+  if(msel.size>1){if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();delMany([...msel])}return}
+  if(!sel)return;
   if(e.key==='Tab'){e.preventDefault();select(addChild(sel),true)}
   else if(e.key==='Enter'){e.preventDefault();const t=$('#pTitle');if(t)t.focus()}
   else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();del(sel)}
