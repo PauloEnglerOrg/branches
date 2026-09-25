@@ -90,6 +90,7 @@ button{cursor:pointer}
   display:flex;align-items:center;justify-content:center;cursor:crosshair;z-index:2;touch-action:none;box-shadow:var(--shadow)}
 .lnkh::after{content:"";position:absolute;inset:-8px}
 .lnkh svg{pointer-events:none}
+.node.ref::before{content:"Reference";position:absolute;left:0;bottom:calc(100% + 7px);font-size:11px;font-weight:600;color:var(--accent);white-space:nowrap;pointer-events:none}
 .node.droptarget{outline:2px dashed var(--accent);outline-offset:4px}
 #guides path.linkline{stroke:var(--accent);stroke-dasharray:6 5;stroke-linecap:round}
 .fold.r{left:100%;top:50%;margin:-9px 0 0 -9px}.fold.l{right:100%;top:50%;margin:-9px -9px 0 0}
@@ -500,7 +501,7 @@ function cardHTML(n){
   if(n.items&&n.items.length)prog+=`<span class="prog">${n.items.filter(i=>i.done).length}/${n.items.length}</span>`;
   const rp=n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'';
   const meta=(di||links||prog||rp)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${rp}${prog}${links}</div>`:'';
-  return `<div class="node s${n.size||2}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
+  return `<div class="node s${n.size||2}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}${msel.size>1&&[...msel][0]===n.id?' ref':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
 <div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
 function foldHTML(n){
@@ -676,6 +677,10 @@ function renderMultiPanel(){
     <div class="field"><span class="fl">Text size</span>
       <div class="row"><div class="seg">${[1,2,3,4].map(s=>`<button data-act="msize" data-v="${s}" class="${sz===s?'on':''}">${['S','M','L','XL'][s-1]}</button>`).join('')}</div></div>
     </div>
+    <div class="field"><span class="fl">Box size</span>
+      <div class="row"><button class="btn" data-act="mmatch" style="border:1px solid var(--line);background:var(--card)">Match size to “${esc((ns[0].title||'Untitled').slice(0,24))}”</button></div>
+      <div class="hint">The first box you selected is the reference; the others take its width and height.</div>
+    </div>
     <div class="field"><span class="fl">Colour</span>${swatches(ns.every(n=>n.color===ns[0].color)?ns[0].color:null,'mcolor','mColor')}</div>
     <div class="actions">
       <button class="btn" data-act="mtask">Make tasks</button>
@@ -789,6 +794,12 @@ panel.addEventListener('click',e=>{
     if(a==='mdelete'){delMany([...msel]);return}
     if(a==='msize')ns.forEach(n=>n.size=+b.dataset.v);
     else if(a==='mresetsize')ns.forEach(n=>{delete n.w;delete n.h});
+    else if(a==='mmatch'){
+      const ref=ns[0],re=elMap[ref.id];if(!re)return;
+      const w=re.offsetWidth,h=re.offsetHeight;
+      ns.slice(1).forEach(n=>{n.w=w;n.h=h});
+      nextLabel=`Matched ${ns.length-1} box${ns.length>2?'es':''} to “${(ref.title||'Untitled').slice(0,30)}”`;
+    }
     else if(a==='mcolor')ns.forEach(n=>{if(b.dataset.v)n.color=b.dataset.v;else delete n.color});
     else if(a==='mtask')ns.forEach(n=>n.task=true);
     else if(a==='mnotask')ns.forEach(n=>{n.task=false;n.done=false});
