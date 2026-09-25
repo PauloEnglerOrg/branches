@@ -635,13 +635,14 @@ function addChildDir(pid,dir){
   if(el&&alignBottom!==null)n.y=Math.round(alignBottom-el.offsetHeight);
   return id;
 }
+// a box added below takes the same size and colour as the one it's added from
 function addSibling(id){
   const n=N(id);
   if(!n.parent){let maxB=-1e9;for(const r of all().filter(r=>!r.parent)){const b=r.y+height(r.id)+desc(r.id).reduce((m,d)=>Math.max(m,N(d).y+height(d)-r.y-height(r.id)),0);if(Math.abs(r.x-n.x)<200)maxB=Math.max(maxB,b)}
-    return create({x:n.x,y:maxB+60,size:n.size})}
+    return create({x:n.x,y:maxB+60,size:n.size,...(n.color?{color:n.color}:{})})}
   const sibs=kids(n.parent).filter(s=>Math.abs(s.x-n.x)<60);let maxB=n.y+height(id);
   for(const s of sibs)maxB=Math.max(maxB,s.y+height(s.id));
-  return create({parent:n.parent,x:n.x,y:maxB+16,size:n.size});
+  return create({parent:n.parent,x:n.x,y:maxB+16,size:n.size,...(n.color?{color:n.color}:{})});
 }
 function isEmpty(n){return n&&n._new&&!n.title&&!(n.items||[]).length&&!(n.links||[]).length&&!n.due&&!kids(n.id).length}
 function del(id){delMany([id])}
