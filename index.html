@@ -632,7 +632,7 @@ function addChild(pid){
   const ks=kids(pid);let x=p.x+pw+90,y=p.y;
   if(ks.length){const side=ks.filter(k=>k.x>=p.x);const base=side.length?side:ks;let maxB=-1e9;
     for(const k of base){const b=k.y+height(k.id);if(b>maxB){maxB=b;x=k.x}}y=maxB+16}
-  return create({parent:pid,x,y,size:2});
+  return create({parent:pid,x,y,size:2,...(p.color?{color:p.color}:{})});  // a new branch takes its parent's colour
 }
 function addChildDir(pid,dir){
   if(editing)finishEdit();
@@ -651,7 +651,7 @@ function addChildDir(pid,dir){
     else{x=p.x;if(dir==='b')y=p.y+ph+56;else alignBottom=p.y-56}
     if(dir==='t')y=alignBottom-44;
   }
-  const id=create({parent:pid,x:Math.round(x),y:Math.round(y),size,side:dir});
+  const id=create({parent:pid,x:Math.round(x),y:Math.round(y),size,side:dir,...(p.color?{color:p.color}:{})});
   render();  // measure the new card, then line it up against the side it grew from
   const n=N(id),el=elMap[id];
   if(el&&alignRight!==null)n.x=Math.round(alignRight-el.offsetWidth);
