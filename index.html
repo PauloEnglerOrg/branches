@@ -845,6 +845,7 @@ panel.addEventListener('click',e=>{
   if(msel.size>1){
     const ns=[...msel].map(N).filter(Boolean);
     if(a==='close'){deselect();return}
+    const fp=['malign','mdist','mmatch','msize','mresetsize'].includes(a)?followPlan(ns.map(n=>n.id)):null;
     if(a==='mdelete'){delMany([...msel]);return}
     if(a==='msize')ns.forEach(n=>n.size=+b.dataset.v);
     else if(a==='mresetsize')ns.forEach(n=>{delete n.w;delete n.h});
@@ -879,12 +880,15 @@ panel.addEventListener('click',e=>{
     else if(a==='mnotask')ns.forEach(n=>{n.task=false;n.done=false});
     else if(a==='mdone')ns.forEach(n=>{n.task=true;if(n.repeat)toggleDone(n);else n.done=true});
     else if(a==='mundone')ns.forEach(n=>n.done=false);
+    if(fp){render();applyFollow(fp)}
     render();renderPanel();save();return;
   }
   const n=N(sel);if(!n)return;
   if(a==='close')deselect();
-  else if(a==='size'){n.size=+b.dataset.v;delete n._new;render();renderPanel();save()}
-  else if(a==='resetSize'){delete n.w;delete n.h;render();renderPanel();save()}
+  else if(a==='size'||a==='resetSize'){
+    const fp=followPlan([n.id]);
+    if(a==='size'){n.size=+b.dataset.v;delete n._new}else{delete n.w;delete n.h}
+    render();applyFollow(fp);render();renderPanel();save()}
   else if(a==='color'){if(b.dataset.v)n.color=b.dataset.v;else delete n.color;render();renderPanel();save()}
   else if(a==='repday'){const r=n.repeat,v=+b.dataset.v,ds=new Set(r.days||[]);ds.has(v)?ds.delete(v):ds.add(v);if(ds.size)r.days=[...ds];render();renderPanel();save()}
   else if(a==='toggleDone'){toggleDone(n);render();renderPanel();save()}
@@ -965,7 +969,7 @@ canvas.addEventListener('pointerdown',e=>{
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY});try{canvas.setPointerCapture(e.pointerId)}catch(_){}
     // with several boxes selected, every one of them resizes by the same amount
     const group=msel.size>1&&msel.has(id)?[...msel].filter(i=>i!==id&&elMap[i]).map(i=>({id:i,ow:elMap[i].offsetWidth,oh:elMap[i].offsetHeight})):[];
-    g={type:'resize',id,group,sx:e.clientX,sy:e.clientY,ow:el.offsetWidth,oh:el.offsetHeight,moved:false};return;
+    g={type:'resize',id,group,fp:followPlan([id,...group.map(o=>o.id)]),sx:e.clientX,sy:e.clientY,ow:el.offsetWidth,oh:el.offsetHeight,moved:false};return;
   }
   pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{canvas.setPointerCapture(e.pointerId)}catch(_){}
@@ -986,6 +990,36 @@ canvas.addEventListener('pointerdown',e=>{
     }else g={type:'pan',sx:e.clientX,sy:e.clientY,vx:S.view.x,vy:S.view.y,moved:false};
   }
 });
+/* ---------- boxes stacked under a box follow it when it moves or changes height, so the gaps in a column are kept ---------- */
+const STACK_GAP=64;
+function stackUnder(src,skip){
+  const rs=Object.keys(elMap).filter(i=>!skip.has(i)).map(i=>({id:i,...rectOf(i)}));
+  const out=new Set(),q=[src];
+  while(q.length){const a=rectOf(q.shift());
+    for(const b of rs){if(out.has(b.id))continue;const gap=b.y-(a.y+a.h);
+      if(b.x<a.x+a.w-4&&a.x<b.x+b.w-4&&gap>=-4&&gap<=STACK_GAP){out.add(b.id);q.push(b.id)}}}
+  return out;
+}
+// before changing boxes `srcs`: note who is stacked under each (plus their branches in Branch mode) and where things were
+function followPlan(srcs){
+  const skip=new Set(srcs),plan=new Map();
+  for(const s of srcs){
+    const st=stackUnder(s,skip),add=i=>{if(!skip.has(i)&&!plan.has(i)&&N(i))plan.set(i,{s,ox:N(i).x,oy:N(i).y})};
+    st.forEach(add);if(moveMode==='branch')st.forEach(i=>desc(i).forEach(add));
+  }
+  const base=Object.fromEntries(srcs.map(s=>{const r=rectOf(s);return [s,{x:r.x,b:r.y+r.h}]}));
+  return {plan,base};
+}
+// after the change: move each follower by its box's horizontal shift and bottom-edge shift
+function applyFollow(fp){
+  for(const [i,{s,ox,oy}] of fp.plan){
+    const n=N(i),b=fp.base[s];if(!n||!N(s))continue;const r=rectOf(s);
+    n.x=Math.round(ox+(r.x-b.x));n.y=Math.round(oy+(r.y+r.h-b.b));
+    const el=elMap[i];if(el){el.style.left=n.x+'px';el.style.top=n.y+'px'}
+  }
+  fp.plan.forEach((_,i)=>updateSide(i));
+}
+
 /* ---------- snapping while dragging: edges, centres and matching gaps (hold Alt/Option to place freely) ---------- */
 const guidesEl=$('#guides');
 function rectOf(id){const n=N(id),e=elMap[id];return {x:n.x,y:n.y,w:e?e.offsetWidth:160,h:e?e.offsetHeight:44}}
@@ -1066,7 +1100,7 @@ canvas.addEventListener('pointermove',e=>{
     const k=S.view.k,n=N(g.id),el=elMap[g.id];if(!n||!el)return;
     let w=Math.max(60,g.ow+dx/k),h=Math.max(20,g.oh+dy/k),segs=[];
     if(!e.altKey){  // snap the right and bottom edges to other cards' edges and centres
-      if(!g.snap)g.snap=snapPrep(new Set([g.id,...g.group.map(o=>o.id)]),g.id);
+      if(!g.snap)g.snap=snapPrep(new Set([g.id,...g.group.map(o=>o.id),...g.fp.plan.keys()]),g.id);
       const T=7/k,near=(v,list)=>{let b=null;for(const a of list)if(Math.abs(a-v)<=T&&(b===null||Math.abs(a-v)<Math.abs(b-v)))b=a;return b};
       const xs=g.snap.refs.flatMap(f=>[f.x,f.x+f.w/2,f.x+f.w]),ys=g.snap.refs.flatMap(f=>[f.y,f.y+f.h/2,f.y+f.h]);
       const bx=near(n.x+w,xs),by=near(n.y+h,ys);
@@ -1079,6 +1113,7 @@ canvas.addEventListener('pointermove',e=>{
     for(const o of g.group){const m=N(o.id),me=elMap[o.id];if(!m||!me)continue;
       m.w=Math.round(Math.max(60,o.ow+dw));if(Math.abs(dy)>2||m.h)m.h=Math.round(Math.max(20,o.oh+dh));
       me.style.width=m.w+'px';me.style.maxWidth='none';if(m.h)me.style.minHeight=m.h+'px'}
+    applyFollow(g.fp);
     drawGuides(segs);drawEdges();
   }
   else if(g.type==='drag'){
