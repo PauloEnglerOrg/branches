@@ -99,6 +99,12 @@ button{cursor:pointer}
 .lnkh::after{content:"";position:absolute;inset:-8px}
 .lnkh svg{pointer-events:none}
 .node.ref::before{content:"Reference";position:absolute;left:0;bottom:calc(100% + 7px);font-size:11px;font-weight:600;color:var(--accent);white-space:nowrap;pointer-events:none}
+.bright{display:flex;align-items:center;gap:10px}
+.bright input[type=range]{flex:1;accent-color:var(--accent);height:24px;
+  background:linear-gradient(to right,#000,var(--bc,#888),#fff);border-radius:999px;-webkit-appearance:none;appearance:none;height:8px}
+.bright input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--card);border:2px solid var(--accent);box-shadow:var(--shadow)}
+.bright input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--card);border:2px solid var(--accent)}
+.bright output{min-width:42px;text-align:right;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .algn{display:inline-flex;flex-wrap:wrap;gap:4px}
 .algn .btn{border:1px solid var(--line);background:var(--card);height:32px;padding:0 9px;font-size:13px;gap:5px}
 .algn .btn:disabled{opacity:.4}
@@ -509,7 +515,15 @@ function toggleDone(n){
   }
   n.done=!n.done;
 }
-const colorOf=id=>(N(id)&&N(id).color)||'';
+/* brightness: n.tint (-80..80) mixes black (darker) or white (lighter) into the box colour; hue stays the same
+   and n.color keeps the original, so it can always be reset */
+function shade(hex,t){
+  const m=/^#?([0-9a-f]{6})$/i.exec(hex||'');if(!m||!t)return hex;
+  const v=parseInt(m[1],16),f=c=>Math.round(t>0?c+(255-c)*t:c*(1+t));
+  return '#'+[v>>16,v>>8&255,v&255].map(c=>f(c).toString(16).padStart(2,'0')).join('');
+}
+const shown=n=>n&&n.color?shade(n.color,(n.tint||0)/100):'';
+const colorOf=id=>shown(N(id));
 // white or dark text on a coloured box, by perceived brightness
 function onColor(hex){const m=/^#?([0-9a-f]{6})$/i.exec(hex||'');if(!m)return '#fff';const v=parseInt(m[1],16),r=v>>16,g=v>>8&255,b=v&255;
   return (0.299*r+0.587*g+0.114*b)>165?'#1B2025':'#fff'}
@@ -555,7 +569,7 @@ const SIZES=[[-1,'XXS'],[0,'XS'],[1,'S'],[2,'M'],[3,'L'],[4,'XL']];
 const sizeOf=n=>n.size??2;
 const szClass=n=>{const v=sizeOf(n);return v<0?'sm'+(-v):'s'+v};
 function cardHTML(n){
-  const col=n.color||'';
+  const col=shown(n);
   const items=(n.items||[]).map(i=>`<li class="${i.done?'done':''}"><button class="ichk ${i.done?'on':''}" data-act="item" data-item="${i.id}" aria-label="Toggle item"></button><span>${esc(i.text)||'&nbsp;'}</span></li>`).join('');
   const di=dueInfo(n.due);
   const links=(n.links||[]).map(l=>`<a class="lnk" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener">${esc(l.label||host(l.url))}</a>`).join('');
@@ -700,10 +714,10 @@ function addChildDir(pid,dir){
 function addSibling(id){
   const n=N(id);
   if(!n.parent){let maxB=-1e9;for(const r of all().filter(r=>!r.parent)){const b=r.y+height(r.id)+desc(r.id).reduce((m,d)=>Math.max(m,N(d).y+height(d)-r.y-height(r.id)),0);if(Math.abs(r.x-n.x)<200)maxB=Math.max(maxB,b)}
-    return create({x:n.x,y:maxB+60,size:n.size,...(n.color?{color:n.color}:{})})}
+    return create({x:n.x,y:maxB+60,size:n.size,...(n.color?{color:n.color}:{}),...(n.tint?{tint:n.tint}:{})})}
   const sibs=kids(n.parent).filter(s=>Math.abs(s.x-n.x)<60);let maxB=n.y+height(id);
   for(const s of sibs)maxB=Math.max(maxB,s.y+height(s.id));
-  return create({parent:n.parent,x:n.x,y:maxB+16,size:n.size,...(n.color?{color:n.color}:{})});
+  return create({parent:n.parent,x:n.x,y:maxB+16,size:n.size,...(n.color?{color:n.color}:{}),...(n.tint?{tint:n.tint}:{})});
 }
 function isEmpty(n){return n&&n._new&&!n.title&&!(n.items||[]).length&&!(n.links||[]).length&&!n.due&&!kids(n.id).length}
 function del(id){delMany([id])}
@@ -761,6 +775,11 @@ function renderMultiPanel(){
       ${ns.length<3?'<div class="hint">Select at least 3 boxes to distribute.</div>':''}
     </div>
     <div class="field"><span class="fl">Colour</span>${swatches(ns.every(n=>n.color===ns[0].color)?ns[0].color:null,'mcolor','mColor')}</div>
+    <div class="field"><span class="fl">Brightness</span>
+      <div class="algn"><button class="btn" data-act="mtint" data-v="-10">Darker</button><button class="btn" data-act="mtint" data-v="10">Lighter</button><button class="btn" data-act="mtint" data-v="0">Reset</button></div>
+      <div class="bright"><input type="range" id="mTint" min="-80" max="80" step="5" value="${ns.every(n=>(n.tint||0)===(ns[0].tint||0))?(ns[0].tint||0):0}" aria-label="Set the same brightness for all"><output id="mTintOut">${ns.every(n=>(n.tint||0)===(ns[0].tint||0))?tintLabel(ns[0].tint||0):'mixed'}</output></div>
+      <div class="hint">Darker and Lighter change each selected box by the same step and keep their colours; the slider sets them all to the same level. Boxes without a colour aren’t affected.</div>
+    </div>
     <div class="actions">
       <button class="btn" data-act="mlink">Link all to…</button>
       <button class="btn" data-act="munlink">Unlink all</button>
@@ -775,6 +794,7 @@ function renderMultiPanel(){
   panel.hidden=false;document.body.classList.add('panel-open');
 }
 function closePanel(){panel.hidden=true;panel.innerHTML='';document.body.classList.remove('panel-open')}
+const tintLabel=v=>v>0?`+${v}%`:v<0?`${v}%`:'0%';
 function swatches(cur,act,pickId){
   const custom=cur&&!COLORS.includes(cur);
   return `<div class="row"><button class="sw none ${!cur?'on':''}" data-act="${act}" data-v="" aria-label="No colour" title="No colour"></button>${COLORS.map(c=>`<button class="sw ${cur===c?'on':''}" style="--s:${c}" data-act="${act}" data-v="${c}" aria-label="Colour ${c}"></button>`).join('')}<label class="sw pick ${custom?'on':''}" title="Any colour"${custom?` style="background:${cur}"`:''}><input type="color" id="${pickId}" value="${esc(cur||'#2E57E6')}" aria-label="Pick any colour"></label></div>`;
@@ -800,6 +820,10 @@ function renderPanel(){
       ${isTask(n)?`<button class="btn" data-act="toggleDone" style="border:1px solid var(--line);background:var(--card)">${n.done?'Mark not done':n.repeat?'Done this time':'Mark done'}</button>`:''}</div>
     </div>
     <div class="field"><span class="fl">Colour</span>${swatches(n.color,'color','pColor')}</div>
+    <div class="field"><span class="fl">Brightness</span>
+      ${n.color?`<div class="bright"><span class="hint">Darker</span><input type="range" id="pTint" min="-80" max="80" step="5" value="${n.tint||0}" style="--bc:${n.color}" aria-label="Brightness"><span class="hint">Lighter</span><output id="pTintOut">${tintLabel(n.tint||0)}</output></div>
+      ${n.tint?`<div class="row"><button class="btn" data-act="tintReset" style="height:26px;padding:0 8px;border:1px solid var(--line);background:var(--card);font-size:12px">Reset brightness</button></div>`:''}`:'<div class="hint">Pick a colour first, then make it lighter or darker here.</div>'}
+    </div>
     <div class="field"><label for="pDate">Due date</label>
       <div class="row"><input class="inp grow" type="date" id="pDate" value="${esc(dv||'')}"><input class="inp" type="time" id="pTime" value="${esc(tv||'')}" ${dv?'':'disabled'} aria-label="Due time">
       ${n.due?`<button class="x" data-act="clearDue" aria-label="Clear due date">×</button>`:''}</div>
@@ -845,9 +869,11 @@ function renderPanel(){
 
 panel.addEventListener('input',e=>{
   const t=e.target;
+  if(t.id==='mTint'){const v=+t.value;[...msel].map(N).filter(n=>n&&n.color).forEach(n=>{if(v)n.tint=v;else delete n.tint});const o=$('#mTintOut');if(o)o.textContent=tintLabel(v);render();save();return}
   if(t.id==='mColor'){[...msel].map(N).filter(Boolean).forEach(n=>n.color=t.value);render();save();return}
   const n=N(sel);if(!n)return;
   if(t.id==='pColor'){n.color=t.value;render();save();return}
+  if(t.id==='pTint'){const v=+t.value;if(v)n.tint=v;else delete n.tint;const o=$('#pTintOut');if(o)o.textContent=tintLabel(v);render();save();return}
   if(t.id==='pNotify'){if(t.checked)n.notify={to:[],days:[1],sent:{}};else delete n.notify;delete n._new;render();renderPanel();save();return}
   if(t.id==='pNotifyTo'||t.id==='pNotifyDays')return;  // saved when the field is left (change event)
   if(t.id==='pRep'){
@@ -869,7 +895,7 @@ panel.addEventListener('input',e=>{
   render();save();
 });
 panel.addEventListener('change',e=>{
-  const t=e.target;if(t.id==='pColor'||t.id==='mColor'){renderPanel();return}
+  const t=e.target;if(['pColor','mColor','pTint','mTint'].includes(t.id)){renderPanel();return}
   const n=N(sel);if(!n||!n.notify)return;
   if(t.id==='pNotifyTo'){n.notify.to=parseEmails(t.value);render();renderPanel();save()}
   else if(t.id==='pNotifyDays'){n.notify.days=parseDays(t.value);render();renderPanel();save()}
@@ -921,6 +947,8 @@ panel.addEventListener('click',e=>{
       ns.slice(1).forEach(n=>{n.w=w;n.h=h});
       nextLabel=`Matched ${ns.length-1} box${ns.length>2?'es':''} to “${(ref.title||'Untitled').slice(0,30)}”`;
     }
+    else if(a==='mtint'){const d=+b.dataset.v;ns.filter(n=>n.color).forEach(n=>{const v=d?Math.max(-80,Math.min(80,(n.tint||0)+d)):0;if(v)n.tint=v;else delete n.tint});
+      nextLabel=d?`Made ${ns.length} boxes ${d>0?'lighter':'darker'}`:`Reset brightness of ${ns.length} boxes`}
     else if(a==='mcolor')ns.forEach(n=>{if(b.dataset.v)n.color=b.dataset.v;else delete n.color});
     else if(a==='mlink'){attachFrom=ns.map(n=>n.id);canvas.classList.add('attaching');if(view!=='branches')setView('branches');toast(`Tap the box to link these ${ns.length} under, or empty space to cancel`);return}
     else if(a==='munlink'){const set=new Set(ns.map(n=>n.id));ns.forEach(n=>{if(n.parent&&!set.has(n.parent)){n.parent=null;delete n.side}});nextLabel=`Unlinked ${ns.length} boxes`;toast('Unlinked')}
@@ -937,6 +965,7 @@ panel.addEventListener('click',e=>{
     const fp=followPlan([n.id]);
     if(a==='size'){n.size=+b.dataset.v;delete n._new}else{delete n.w;delete n.h}
     renderQuiet();applyFollow(fp);render();renderPanel();save()}
+  else if(a==='tintReset'){delete n.tint;render();renderPanel();save()}
   else if(a==='color'){if(b.dataset.v)n.color=b.dataset.v;else delete n.color;render();renderPanel();save()}
   else if(a==='repday'){const r=n.repeat,v=+b.dataset.v,ds=new Set(r.days||[]);ds.has(v)?ds.delete(v):ds.add(v);if(ds.size)r.days=[...ds];render();renderPanel();save()}
   else if(a==='toggleDone'){toggleDone(n);render();renderPanel();save()}
@@ -1530,7 +1559,7 @@ function setView(v){
 $('#viewSeg').onclick=e=>{const b=e.target.closest('button');if(b)setView(b.dataset.v)};
 function renderView(){if(view==='tasks')renderTasks();else if(view==='calendar')renderCal()}
 function pathOf(n){const p=[];let c=n.parent&&N(n.parent),g=0;while(c&&g++<50){p.unshift(c.title||'Untitled');c=c.parent&&N(c.parent)}return p.join(' › ')}
-const boxColor=n=>n.color||'var(--muted)';
+const boxColor=n=>shown(n)||'var(--muted)';
 // jump from a list/calendar item to its box on the board
 function showOnBoard(id){
   reveal(id);setView('branches');
@@ -1555,7 +1584,7 @@ function renderTasks(){
     const di=dueInfo(n.due),path=pathOf(n),it=(n.items||[]).length?`${n.items.filter(i=>i.done).length}/${n.items.length} items`:'';
     const when=di?(di.cls==='over'||!di.hasTime?(di.cls==='over'?di.label:''):di.t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
     const sub=[n.repeat?'↻ '+repeatText(n.repeat):'',n.notify&&(n.notify.to||[]).length?'✉ '+notifyText(n):'',path,it].filter(Boolean).join(' · ');
-    return `<div class="trow${n.color?' filled':''}${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${n.color?`--on:${onColor(n.color)}`:''}">
+    return `<div class="trow${n.color?' filled':''}${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${n.color?`--on:${onColor(shown(n))}`:''}">
       <button class="tchk" data-act="tdone" aria-label="${n.done?'Mark not done':'Mark done'}"></button>
       <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${sub?`<div class="ts">${esc(sub)}</div>`:''}</div>
       ${when?`<span class="tw ${di.cls}">${esc(when)}</span>`:''}
@@ -1590,7 +1619,7 @@ function dueByDay(until){
   return m;
 }
 function chip(n,di,style='',ghost){
-  const c=n.color,time=di.hasTime?di.t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}):'';
+  const c=shown(n),time=di.hasTime?di.t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}):'';
   const colours=c?`--chipbg:${c};--chipfg:${onColor(c)};`:'';
   return `<button class="chip${n.done?' done':''}${ghost?' ghost':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${colours}${style}" title="${esc(n.title||'Untitled')}">${time?`<span class="tm">${esc(time)}</span>`:''}${esc(n.title||'Untitled')}</button>`;
 }
@@ -1705,6 +1734,7 @@ function describe(a,b){
   if(only('due','alerted'))return 'Changed due date of '+who;
   if(only('repeat','task','done','due'))return 'Changed repeat of '+who;
   if(only('notify'))return 'Changed email reminder of '+who;
+  if(only('tint'))return 'Changed brightness of '+who;
   return 'Edited '+who;
 }
 function goTo(i){
