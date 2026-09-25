@@ -240,6 +240,16 @@ body:not([data-view="branches"]) .canvas-only{display:none}
 .trow .tw.over{color:var(--warn)}.trow .tw.today{color:var(--soon)}
 .trow .tgo{flex:none;border:0;background:transparent;color:var(--muted);border-radius:6px;width:30px;height:30px;font-size:15px}
 .trow .tgo:hover{background:var(--panel);color:var(--ink)}
+/* rows of coloured boxes are filled with the box colour, like on the board */
+.trow.filled{background:var(--c);border-color:transparent;color:var(--on)}
+.trow.filled:hover{background:var(--c);filter:brightness(1.08)}
+.trow.filled .ts,.trow.filled .tw,.trow.filled .tgo{color:var(--on);opacity:.8}
+.trow.filled .tw.over{color:var(--on);opacity:1;font-weight:600}
+.trow.filled .tchk{border-color:var(--on)}
+.trow.filled.done .tchk{background:var(--on)}
+.trow.filled.done .tchk::after{border-color:var(--c)}
+.trow.filled.done .tt{color:var(--on);opacity:.7}
+.trow.filled .tgo:hover{background:rgba(0,0,0,.12);opacity:1}
 .tempty{text-align:center;color:var(--muted);padding:60px 16px;font-size:16px}
 .tdone{border:0;background:transparent;color:var(--muted);font-size:13px;font-weight:600;text-align:left;padding:4px 0}
 .calbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 auto 14px;max-width:1200px}
@@ -1320,7 +1330,7 @@ function renderTasks(){
     const di=dueInfo(n.due),path=pathOf(n),it=(n.items||[]).length?`${n.items.filter(i=>i.done).length}/${n.items.length} items`:'';
     const when=di?(di.cls==='over'||!di.hasTime?(di.cls==='over'?di.label:''):di.t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
     const sub=[n.repeat?'↻ '+repeatText(n.repeat):'',path,it].filter(Boolean).join(' · ');
-    return `<div class="trow${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)}">
+    return `<div class="trow${n.color?' filled':''}${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${n.color?`--on:${onColor(n.color)}`:''}">
       <button class="tchk" data-act="tdone" aria-label="${n.done?'Mark not done':'Mark done'}"></button>
       <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${sub?`<div class="ts">${esc(sub)}</div>`:''}</div>
       ${when?`<span class="tw ${di.cls}">${esc(when)}</span>`:''}
