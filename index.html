@@ -975,7 +975,8 @@ canvas.addEventListener('pointerdown',e=>{
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY});try{canvas.setPointerCapture(e.pointerId)}catch(_){}
     // with several boxes selected, every one of them resizes by the same amount
     const group=msel.size>1&&msel.has(id)?[...msel].filter(i=>i!==id&&elMap[i]).map(i=>({id:i,ow:elMap[i].offsetWidth,oh:elMap[i].offsetHeight})):[];
-    g={type:'resize',id,group,fp:followPlan([id,...group.map(o=>o.id)]),sx:e.clientX,sy:e.clientY,ow:el.offsetWidth,oh:el.offsetHeight,moved:false};return;
+    const srcs=[id,...group.map(o=>o.id)].map(i=>{const r=rectOf(i);return {id:i,ox:r.x,oy:r.y,ow:r.w,oh:r.h}});
+    g={type:'resize',id,group,srcs,fp:followPlan(srcs.map(o=>o.id)),sx:e.clientX,sy:e.clientY,ow:el.offsetWidth,oh:el.offsetHeight,moved:false};return;
   }
   pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{canvas.setPointerCapture(e.pointerId)}catch(_){}
@@ -1010,6 +1011,16 @@ function stackUnder(src,skip,H,W){
       if(b.x<a.x+a.w-4&&a.x<b.x+b.w-4&&b.y>=a.y+8&&b.y-(a.y+a.h)<=STACK_GAP){out.add(b.id);q.push(b.id)}}}
   return out;
 }
+// boxes to the right of `src` in the same row: overlapping it vertically, starting right of its left edge,
+// at most STACK_GAP beyond its right edge (overlaps count)
+function rowRight(src,skip,H,W){
+  const rs=Object.keys(elMap).filter(i=>!skip.has(i)).map(i=>({id:i,...rectWith(i,H,W)}));
+  const out=new Set(),q=[src];
+  while(q.length){const a=rectWith(q.shift(),H,W);
+    for(const b of rs){if(out.has(b.id)||b.id===src)continue;
+      if(b.y<a.y+a.h-4&&a.y<b.y+b.h-4&&b.x>=a.x+8&&b.x-(a.x+a.w)<=STACK_GAP){out.add(b.id);q.push(b.id)}}}
+  return out;
+}
 // Map follower id -> [x edge it follows ('left'|'right'), y edge it follows ('top'|'bottom')]
 function followersOf(s,skip,H,W){
   const out=new Map(),r=rectWith(s,H,W),bottom=r.y+r.h,right=r.x+r.w;
@@ -1017,6 +1028,8 @@ function followersOf(s,skip,H,W){
   for(const d of desc(s)){const q=rectWith(d,H,W),below=q.y>=bottom-4,ro=q.x>=right-4;if(below||ro)add(d,ro?'right':'left',below?'bottom':'top')}
   const st=stackUnder(s,skip,H,W);st.forEach(i=>add(i,'left','bottom'));
   if(moveMode==='branch')st.forEach(i=>desc(i).forEach(d=>add(d,'left','bottom')));
+  const rw=rowRight(s,skip,H,W);rw.forEach(i=>add(i,'right','top'));
+  rw.forEach(i=>desc(i).forEach(d=>add(d,'right','top')));  // a box pushed aside takes its branches with it
   return out;
 }
 // before changing boxes `srcs`: note their followers and where everything was
@@ -1142,6 +1155,15 @@ canvas.addEventListener('pointermove',e=>{
     for(const o of g.group){const m=N(o.id),me=elMap[o.id];if(!m||!me)continue;
       m.w=Math.round(Math.max(60,o.ow+dw));if(Math.abs(dy)>2||m.h)m.h=Math.round(Math.max(20,o.oh+dh));
       me.style.width=m.w+'px';me.style.maxWidth='none';if(m.h)me.style.minHeight=m.h+'px'}
+    // resized boxes in the same row push each other right, and in the same column push each other down
+    if(g.srcs.length>1){
+      const grow=Object.fromEntries(g.srcs.map(o=>[o.id,[elMap[o.id].offsetWidth-o.ow,elMap[o.id].offsetHeight-o.oh]]));
+      for(const S of g.srcs){let sx=0,sy=0;
+        for(const T of g.srcs){if(T===S)continue;
+          if(T.oy<S.oy+S.oh&&S.oy<T.oy+T.oh&&T.ox<S.ox)sx+=grow[T.id][0];
+          else if(T.ox<S.ox+S.ow&&S.ox<T.ox+T.ow&&T.oy<S.oy)sy+=grow[T.id][1]}
+        const m=N(S.id);m.x=Math.round(S.ox+sx);m.y=Math.round(S.oy+sy);elMap[S.id].style.left=m.x+'px';elMap[S.id].style.top=m.y+'px'}
+    }
     applyFollow(g.fp);
     drawGuides(segs);drawEdges();
   }
@@ -1166,7 +1188,7 @@ function endPointer(e){
   if(!g)return;
   if(g.type==='pinch'){if(pts.size===0)g=null;else g={type:'none'};save();return}
   if(g.type==='attach'){doAttach(g.id)}
-  else if(g.type==='resize'){if(g.moved){delete N(g.id)._new;render();renderPanel();save()}}
+  else if(g.type==='resize'){if(g.moved){delete N(g.id)._new;g.srcs.forEach(o=>updateSide(o.id));render();renderPanel();save()}}
   else if(g.type==='link'){
     if(g.over&&elMap[g.over])elMap[g.over].classList.remove('droptarget');
     attachFrom=g.id;
