@@ -91,6 +91,9 @@ button{cursor:pointer}
 .lnkh::after{content:"";position:absolute;inset:-8px}
 .lnkh svg{pointer-events:none}
 .node.ref::before{content:"Reference";position:absolute;left:0;bottom:calc(100% + 7px);font-size:11px;font-weight:600;color:var(--accent);white-space:nowrap;pointer-events:none}
+.algn{display:inline-flex;flex-wrap:wrap;gap:4px}
+.algn .btn{border:1px solid var(--line);background:var(--card);height:32px;padding:0 9px;font-size:13px;gap:5px}
+.algn .btn:disabled{opacity:.4}
 .isoh{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:var(--card);color:var(--ink);border:1.5px solid var(--accent);
   padding:0;display:flex;align-items:center;justify-content:center;z-index:2;box-shadow:var(--shadow)}
 .isoh.on,.isoh:hover{background:var(--accent);color:#fff}
@@ -712,6 +715,13 @@ function renderMultiPanel(){
       <div class="row"><button class="btn" data-act="mmatch" style="border:1px solid var(--line);background:var(--card)">Match size to “${esc((ns[0].title||'Untitled').slice(0,24))}”</button></div>
       <div class="hint">The first box you selected is the reference; the others take its width and height.</div>
     </div>
+    <div class="field"><span class="fl">Align to the reference</span>
+      <div class="algn"><button class="btn" data-act="malign" data-v="left" title="Align left with the reference"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 1.5v13"/><rect x="4" y="3.5" width="9" height="3" rx="1"/><rect x="4" y="9.5" width="5" height="3" rx="1"/></svg>Left</button><button class="btn" data-act="malign" data-v="hcenter" title="Align centre with the reference"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 1.5v13"/><rect x="3" y="3.5" width="10" height="3" rx="1"/><rect x="5" y="9.5" width="6" height="3" rx="1"/></svg>Centre</button><button class="btn" data-act="malign" data-v="right" title="Align right with the reference"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M14 1.5v13"/><rect x="3" y="3.5" width="9" height="3" rx="1"/><rect x="7" y="9.5" width="5" height="3" rx="1"/></svg>Right</button><button class="btn" data-act="malign" data-v="top" title="Align top with the reference"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 2h13"/><rect x="3.5" y="4" width="3" height="9" rx="1"/><rect x="9.5" y="4" width="3" height="5" rx="1"/></svg>Top</button><button class="btn" data-act="malign" data-v="vcenter" title="Align middle with the reference"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 8h13"/><rect x="3.5" y="3" width="3" height="10" rx="1"/><rect x="9.5" y="5" width="3" height="6" rx="1"/></svg>Middle</button><button class="btn" data-act="malign" data-v="bottom" title="Align bottom with the reference"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 14h13"/><rect x="3.5" y="3" width="3" height="9" rx="1"/><rect x="9.5" y="7" width="3" height="5" rx="1"/></svg>Bottom</button></div>
+    </div>
+    <div class="field"><span class="fl">Distribute evenly</span>
+      <div class="algn"><button class="btn" data-act="mdist" data-v="h" ${ns.length<3?'disabled':''}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 2v12M14.5 2v12"/><rect x="6.5" y="4" width="3" height="8" rx="1"/></svg>Horizontally</button><button class="btn" data-act="mdist" data-v="v" ${ns.length<3?'disabled':''}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 1.5h12M2 14.5h12"/><rect x="4" y="6.5" width="8" height="3" rx="1"/></svg>Vertically</button></div>
+      ${ns.length<3?'<div class="hint">Select at least 3 boxes to distribute.</div>':''}
+    </div>
     <div class="field"><span class="fl">Colour</span>${swatches(ns.every(n=>n.color===ns[0].color)?ns[0].color:null,'mcolor','mColor')}</div>
     <div class="actions">
       <button class="btn" data-act="mtask">Make tasks</button>
@@ -826,6 +836,26 @@ panel.addEventListener('click',e=>{
     if(a==='mdelete'){delMany([...msel]);return}
     if(a==='msize')ns.forEach(n=>n.size=+b.dataset.v);
     else if(a==='mresetsize')ns.forEach(n=>{delete n.w;delete n.h});
+    else if(a==='malign'){
+      // line the others up with the reference (the first selected box)
+      const R=rectOf(ns[0].id),v=b.dataset.v;
+      for(const n of ns.slice(1)){const r=rectOf(n.id);
+        if(v==='left')n.x=R.x;else if(v==='right')n.x=Math.round(R.x+R.w-r.w);else if(v==='hcenter')n.x=Math.round(R.x+R.w/2-r.w/2);
+        else if(v==='top')n.y=R.y;else if(v==='bottom')n.y=Math.round(R.y+R.h-r.h);else if(v==='vcenter')n.y=Math.round(R.y+R.h/2-r.h/2)}
+      ns.forEach(n=>{updateSide(n.id);kids(n.id).forEach(k=>updateSide(k.id))});
+      nextLabel=`Aligned ${ns.length} boxes ${{left:'left',right:'right',hcenter:'to the centre',top:'to the top',bottom:'to the bottom',vcenter:'to the middle'}[v]}`;
+    }
+    else if(a==='mdist'){
+      // equal gaps between boxes; the two outer boxes stay where they are
+      const hz=b.dataset.v==='h',rs=ns.map(n=>({n,r:rectOf(n.id)})).sort((p,q)=>hz?p.r.x-q.r.x:p.r.y-q.r.y);
+      const first=rs[0].r,last=rs[rs.length-1].r,span=hz?last.x+last.w-first.x:last.y+last.h-first.y;
+      let gap=(span-rs.reduce((t,x)=>t+(hz?x.r.w:x.r.h),0))/(rs.length-1);
+      if(gap<16)gap=24;  // boxes overlapping: spread them out from the first one instead
+      let pos=hz?first.x:first.y;
+      for(const x of rs){if(hz)x.n.x=Math.round(pos);else x.n.y=Math.round(pos);pos+=(hz?x.r.w:x.r.h)+gap}
+      ns.forEach(n=>{updateSide(n.id);kids(n.id).forEach(k=>updateSide(k.id))});
+      nextLabel=`Distributed ${ns.length} boxes ${hz?'horizontally':'vertically'}`;
+    }
     else if(a==='mmatch'){
       const ref=ns[0],re=elMap[ref.id];if(!re)return;
       const w=re.offsetWidth,h=re.offsetHeight;
