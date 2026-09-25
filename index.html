@@ -264,6 +264,9 @@ body:not([data-view="branches"]) .canvas-only{display:none}
 .trow .tt{font-size:15px;font-weight:500;overflow-wrap:anywhere}
 .trow.done .tt{text-decoration:line-through;color:var(--muted)}
 .trow .ts{font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow .tsub{display:flex;align-items:center;gap:8px;margin-top:5px;min-width:0}
+.trow .tsub .ts{margin-top:0;min-width:0}
+.trow .due{font-size:12px}
 .trow .tw{font-size:12px;color:var(--muted);white-space:nowrap}
 .trow .tw.over{color:var(--warn)}.trow .tw.today{color:var(--soon)}
 .trow .tgo{flex:none;border:0;background:transparent;color:var(--muted);border-radius:6px;width:30px;height:30px;font-size:15px}
@@ -1582,12 +1585,10 @@ function renderTasks(){
   for(const n of open.filter(n=>!dueInfo(n.due)))add('~none','No date','',n);
   const row=n=>{
     const di=dueInfo(n.due),path=pathOf(n),it=(n.items||[]).length?`${n.items.filter(i=>i.done).length}/${n.items.length} items`:'';
-    const when=di?(di.cls==='over'||!di.hasTime?(di.cls==='over'?di.label:''):di.t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
-    const sub=[n.repeat?'↻ '+repeatText(n.repeat):'',n.notify&&(n.notify.to||[]).length?'✉ '+notifyText(n):'',path,it].filter(Boolean).join(' · ');
+    const sub=[path,it].filter(Boolean).join(' · ');
     return `<div class="trow${n.color?' filled':''}${n.done?' done':''}${sel===n.id?' sel':''}" data-id="${n.id}" style="--c:${boxColor(n)};${n.color?`--on:${onColor(shown(n))}`:''}">
       <button class="tchk" data-act="tdone" aria-label="${n.done?'Mark not done':'Mark done'}"></button>
-      <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${sub?`<div class="ts">${esc(sub)}</div>`:''}</div>
-      ${when?`<span class="tw ${di.cls}">${esc(when)}</span>`:''}
+      <div class="tm"><div class="tt">${esc(n.title||'Untitled')}</div>${di||sub?`<div class="tsub">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${sub?`<span class="ts">${esc(sub)}</span>`:''}</div>`:''}</div>
       <button class="tgo" data-act="tgo" title="Show on the board" aria-label="Show on the board">↗</button></div>`;
   };
   const keys=[...groups.keys()].sort();
