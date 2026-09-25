@@ -41,9 +41,12 @@ button{cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 #app{position:relative;height:100%;overflow:hidden}
-#canvas{position:absolute;inset:0;touch-action:none;cursor:grab;
+#canvas{position:absolute;inset:0;touch-action:none;cursor:default;
   background-image:radial-gradient(var(--dot) 1.1px,transparent 1.2px)}
+#canvas.spacepan{cursor:grab}
 #canvas.panning{cursor:grabbing}
+#marquee{position:absolute;border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:2px;pointer-events:none;z-index:4}
+#marquee[hidden]{display:none}
 #canvas.attaching,#canvas.attaching .node{cursor:crosshair}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #edges{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none}
@@ -200,6 +203,7 @@ kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width
       <svg id="guides"></svg>
     </div>
   </div>
+  <div id="marquee" hidden></div>
   <div id="empty" hidden>Double-click anywhere, or use New subject, to start a branch.</div>
 
   <div class="bar" id="topleft">
@@ -673,7 +677,11 @@ canvas.addEventListener('pointerdown',e=>{
     const ids=[...new Set(base.flatMap(i=>moveMode==='branch'?[i,...desc(i)]:[i]))];
     g={type:'drag',id,base,shift:e.shiftKey,sx:e.clientX,sy:e.clientY,orig:ids.map(i=>[i,N(i).x,N(i).y]),moved:false};
   }else{
-    g={type:'pan',sx:e.clientX,sy:e.clientY,vx:S.view.x,vy:S.view.y,moved:false};
+    // mouse drag on empty space draws a selection box; touch, middle button or Space+drag pans
+    if(e.pointerType==='mouse'&&e.button===0&&!spaceDown&&!attachFrom){
+      const base=new Set(e.shiftKey?(msel.size?msel:sel?[sel]:[]):[]);
+      g={type:'marquee',sx:e.clientX,sy:e.clientY,base,moved:false};
+    }else g={type:'pan',sx:e.clientX,sy:e.clientY,vx:S.view.x,vy:S.view.y,moved:false};
   }
 });
 /* ---------- snapping while dragging: edges, centres and matching gaps (hold Alt/Option to place freely) ---------- */
@@ -735,6 +743,15 @@ canvas.addEventListener('pointermove',e=>{
   const dx=e.clientX-g.sx,dy=e.clientY-g.sy;
   if(!g.moved&&Math.hypot(dx,dy)<4)return;g.moved=true;
   if(g.type==='pan'){canvas.classList.add('panning');S.view.x=g.vx+dx;S.view.y=g.vy+dy;applyView()}
+  else if(g.type==='marquee'){
+    const cr=canvas.getBoundingClientRect(),v=S.view,m=$('#marquee');
+    const x0=Math.min(g.sx,e.clientX)-cr.left,y0=Math.min(g.sy,e.clientY)-cr.top,x1=Math.max(g.sx,e.clientX)-cr.left,y1=Math.max(g.sy,e.clientY)-cr.top;
+    Object.assign(m.style,{left:x0+'px',top:y0+'px',width:(x1-x0)+'px',height:(y1-y0)+'px'});m.hidden=false;
+    const wx0=(x0-v.x)/v.k,wy0=(y0-v.y)/v.k,wx1=(x1-v.x)/v.k,wy1=(y1-v.y)/v.k;
+    g.hits=new Set(g.base);
+    for(const id in elMap){const r=rectOf(id);if(r.x<wx1&&r.x+r.w>wx0&&r.y<wy1&&r.y+r.h>wy0)g.hits.add(id)}
+    for(const id in elMap)elMap[id].classList.toggle('sel',g.hits.has(id));
+  }
   else if(g.type==='resize'){
     const k=S.view.k,n=N(g.id),el=elMap[g.id];if(!n||!el)return;
     let w=Math.max(120,g.ow+dx/k),h=Math.max(36,g.oh+dy/k),segs=[];
@@ -783,6 +800,16 @@ function endPointer(e){
     if(dbl)startEdit(id);
   }
   else if(g.type==='pan'){canvas.classList.remove('panning');if(g.moved)save();else if(attachFrom)doAttach(null);else if(sel||msel.size)deselect()}
+  else if(g.type==='marquee'){
+    $('#marquee').hidden=true;
+    if(!g.moved){if(sel||msel.size)deselect()}
+    else{
+      const hits=[...(g.hits||[])];
+      if(!hits.length)deselect();
+      else if(hits.length===1)select(hits[0]);
+      else{if(sel&&isEmpty(N(sel)))delete S.nodes[sel];sel=null;msel=new Set(hits);closeDue();render();renderPanel()}
+    }
+  }
   g=null;
 }
 canvas.addEventListener('pointerup',endPointer);
@@ -873,6 +900,14 @@ function toast(msg,act,fn){
 }
 
 /* ---------- keyboard ---------- */
+/* hold Space to pan with the mouse */
+let spaceDown=false;
+document.addEventListener('keydown',e=>{
+  if(e.code!=='Space'||/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName)||e.target.isContentEditable)return;
+  e.preventDefault();if(!spaceDown){spaceDown=true;canvas.classList.add('spacepan')}
+});
+document.addEventListener('keyup',e=>{if(e.code==='Space'){spaceDown=false;canvas.classList.remove('spacepan')}});
+window.addEventListener('blur',()=>{spaceDown=false;canvas.classList.remove('spacepan')});
 document.addEventListener('keydown',e=>{
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable;
   if(e.key==='Escape'){
