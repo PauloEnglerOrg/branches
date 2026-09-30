@@ -137,6 +137,8 @@ button{cursor:pointer}
 #focusbar .crumb:hover{color:var(--ink);background:var(--hover)}
 #focusbar .crumb.cur{color:var(--ink);font-weight:600}
 #focusbar .btn{height:28px;background:var(--accent);color:#fff;border-radius:999px;font-size:13px}
+.node{-webkit-touch-callout:none}
+.node.pressing{transform:scale(.96);transition:transform .35s ease}
 .node.droptarget{outline:2px dashed var(--accent);outline-offset:4px}
 #guides path.linkline{stroke:var(--accent);stroke-dasharray:6 5;stroke-linecap:round}
 .fold.r{left:100%;top:50%;margin:-9px 0 0 -9px}.fold.l{right:100%;top:50%;margin:-9px -9px 0 0}
@@ -619,7 +621,7 @@ function cardHTML(n){
   const rp=(n.repeat?`<span class="rep" title="${esc(repeatText(n.repeat))}">↻</span>`:'')+(n.notify&&(n.notify.to||[]).length?`<span class="rep" title="${esc(notifyText(n))}">✉</span>`:'');
   const meta=(di||links||prog||rp)?`<div class="meta">${di?`<span class="due ${di.cls}">${esc(di.label)}</span>`:''}${rp}${prog}${links}</div>`:'';
   return `<div class="node ${szClass(n)}${col?' filled':''}${n.done?' done':''}${sel===n.id||msel.has(n.id)?' sel':''}${msel.size>1&&[...msel][0]===n.id?' ref':''}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;--c:${col||'var(--muted)'};${col?`--on:${onColor(col)};`:''}${n.w?`width:${n.w}px;max-width:none;`:''}${n.h?`min-height:${n.h}px;`:''}">
-<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id&&(n.parent||kids(n.id).length)?unlinkHTML(n):''}${sel===n.id?`<button class="isoh${focusId()===n.id?' on':''}" data-act="iso" title="${focusId()===n.id?'Stop isolating':'Isolate: show only this box and its branches'}" aria-label="Isolate this box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2"/></svg></button>`:''}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
+<div class="head">${isTask(n)?'<button class="chk" data-act="done" aria-label="Mark done"></button>':''}<div class="title">${n.title?esc(n.title):'<span class="ph">Untitled</span>'}</div></div>${items?`<ul class="items">${items}</ul>`:''}${meta}${sel===n.id?[['t','above'],['r','to the right'],['b','below'],['l','to the left']].map(([d,w])=>`<button class="addh ${d}" data-act="add" data-dir="${d}" aria-label="Add a branch ${w}">+</button>`).join(''):''}${foldHTML(n)}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="rsz" aria-hidden="true" title="Drag to resize"></span>':''}${sel===n.id&&(n.parent||kids(n.id).length)?unlinkHTML(n):''}${sel===n.id?`<button class="isoh${focusId()===n.id?' on':''}" data-act="iso" title="${focusId()===n.id?'Stop isolating':'Isolate: show only this box and its branches (F, or long-press the box)'}" aria-label="Isolate this box"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2"/></svg></button>`:''}${sel===n.id||(msel.size>1&&msel.has(n.id))?'<span class="lnkh" role="button" aria-label="Link this box under another" title="Drag onto another box to link it"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>':''}</div>`;
 }
 function foldHTML(n){
   const ks=kids(n.id);if(!ks.length)return '';
@@ -860,7 +862,7 @@ function renderPanel(){
   <div class="body">
     <div class="field">
       <textarea id="pTitle" rows="2" placeholder="What’s this?">${esc(n.title)}</textarea>
-      <div class="hint"><kbd>Enter</kbd> adds a box below · <kbd>Tab</kbd> adds a branch · <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back up</div>
+      <div class="hint"><kbd>Enter</kbd> adds a box below · <kbd>Tab</kbd> adds a branch · <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back up · <kbd>F</kbd> or a long press isolates</div>
     </div>
     <div class="field"><span class="fl">Text size</span>
       <div class="row"><div class="seg">${SIZES.map(([s,l])=>`<button data-act="size" data-v="${s}" class="${sizeOf(n)===s?'on':''}">${l}</button>`).join('')}</div></div>
@@ -1119,7 +1121,7 @@ canvas.addEventListener('pointerdown',e=>{
   }
   pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{canvas.setPointerCapture(e.pointerId)}catch(_){}
-  if(pts.size===2){const [a,b]=[...pts.values()];g={type:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),mx:(a.x+b.x)/2,my:(a.y+b.y)/2};return}
+  if(pts.size===2){cancelPress();const [a,b]=[...pts.values()];g={type:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),mx:(a.x+b.x)/2,my:(a.y+b.y)/2};return}
   if(pts.size>2)return;
   const ne=e.target.closest('.node');
   if(ne){
@@ -1128,6 +1130,10 @@ canvas.addEventListener('pointerdown',e=>{
     const base=msel.has(id)?[...msel]:[id];  // dragging a selected card moves the whole selection
     const ids=[...new Set(base.flatMap(i=>moveMode==='branch'?[i,...desc(i)]:[i]))];
     g={type:'drag',id,base,shift:e.shiftKey,sx:e.clientX,sy:e.clientY,orig:ids.map(i=>[i,N(i).x,N(i).y]),moved:false};
+    // hold still on a box for half a second (mouse or finger) to isolate it
+    if(!e.shiftKey){const gg=g;
+      gg.pressT=setTimeout(()=>{if(g===gg&&!gg.moved&&elMap[id])elMap[id].classList.add('pressing')},150);
+      gg.lpT=setTimeout(()=>{if(g!==gg||gg.moved)return;gg.lp=true;if(elMap[id])elMap[id].classList.remove('pressing');toggleIsolate(id)},550)}
   }else{
     // mouse drag on empty space draws a selection box; touch, middle button or Space+drag pans
     if(e.pointerType==='mouse'&&e.button===0&&!spaceDown&&!attachFrom){
@@ -1258,7 +1264,7 @@ canvas.addEventListener('pointermove',e=>{
     zoomAt(mx,my,d/g.d);S.view.x+=mx-g.mx;S.view.y+=my-g.my;applyView();g.d=d;g.mx=mx;g.my=my;return;
   }
   const dx=e.clientX-g.sx,dy=e.clientY-g.sy;
-  if(!g.moved&&Math.hypot(dx,dy)<4)return;g.moved=true;
+  if(!g.moved&&Math.hypot(dx,dy)<4)return;if(!g.moved)cancelPress();g.moved=true;
   if(g.type==='pan'){canvas.classList.add('panning');S.view.x=g.vx+dx;S.view.y=g.vy+dy;applyView()}
   else if(g.type==='marquee'){
     const cr=canvas.getBoundingClientRect(),v=S.view,m=$('#marquee');
@@ -1322,9 +1328,11 @@ canvas.addEventListener('pointermove',e=>{
     drawEdges();if(S.view.k<FAR)drawLabels();
   }
 });
+function cancelPress(){if(!g)return;clearTimeout(g.pressT);clearTimeout(g.lpT);if(g.id&&elMap[g.id])elMap[g.id].classList.remove('pressing')}
 function endPointer(e){
   if(!pts.has(e.pointerId))return;pts.delete(e.pointerId);drawGuides([]);
   if(!g)return;
+  cancelPress();if(g.lp){g=null;return}  // a long-press already isolated the box
   if(g.type==='pinch'){if(pts.size===0)g=null;else g={type:'none'};save();return}
   if(g.type==='attach'){doAttach(g.id)}
   else if(g.type==='resize'){if(g.moved){delete N(g.id)._new;g.srcs.forEach(o=>updateSide(o.id));render();renderPanel();save()}}
@@ -1472,6 +1480,10 @@ document.addEventListener('keydown',e=>{
   if(!typing&&(e.metaKey||e.ctrlKey)&&(e.key.toLowerCase()==='z'||e.key.toLowerCase()==='y')){
     e.preventDefault();if(e.shiftKey||e.key.toLowerCase()==='y')redo();else undo();return}
   if(typing||!$('#modal').hidden)return;
+  if((e.key==='f'||e.key==='F')&&!e.metaKey&&!e.ctrlKey&&!e.altKey){
+    e.preventDefault();
+    if(sel)toggleIsolate(sel);else if(focusStack.length&&view==='branches')exitFocus(focusStack.length-1);
+    return}
   if(msel.size>1){if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();delMany([...msel])}return}
   if(!sel)return;
   if(e.key==='Tab'){e.preventDefault();select(addChild(sel),true)}
@@ -1577,6 +1589,11 @@ $('#modal').addEventListener('click',e=>{
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&user)push()});
 
+// isolate a box, or step out if it's the one already isolated
+function toggleIsolate(id){
+  if(view!=='branches')setView('branches');
+  if(focusId()===id)exitFocus(focusStack.length-1);else isolate(id);
+}
 function isolate(id){
   if(!N(id))return;if(!focusStack.length)viewBeforeFocus={...S.view};
   reveal(id);focusStack.push(id);render();if(sel)renderPanel();requestAnimationFrame(fit);
