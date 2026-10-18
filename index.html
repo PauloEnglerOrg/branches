@@ -577,7 +577,8 @@ function parseDue(d){if(!d)return null;const [ds,ts]=d.split('T');const [y,m,dd]
 function dueInfo(d){const t=parseDue(d);if(!t||isNaN(t))return null;const hasTime=d.includes('T');
   const now=new Date(),sod=new Date(now.getFullYear(),now.getMonth(),now.getDate()),tom=new Date(sod.getTime()+864e5);
   let cls='later';if(hasTime?t<now:t<sod)cls='over';else if(t<tom)cls='today';
-  const day=(t>=sod&&t<tom)?'Today':(t>=tom&&t<new Date(tom.getTime()+864e5))?'Tomorrow':t.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  const day=(t>=sod&&t<tom)?'Today':(t>=tom&&t<new Date(tom.getTime()+864e5))?'Tomorrow':t.toLocaleDateString(undefined,{month:'short',day:'numeric'})
+    +(t.getFullYear()!==now.getFullYear()?' ’'+String(t.getFullYear()).slice(-2):'');  // other years get ’27, ’28…
   const time=hasTime?' '+t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}):'';
   return {cls,label:day+time,t,hasTime}}
 
