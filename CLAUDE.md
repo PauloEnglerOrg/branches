@@ -21,6 +21,7 @@ Core needs: nested groups, free placement, different text sizes, and per-task ch
 - Selection: `sel` is the single selected card (side panel); `msel` is a Set for Shift+click multi-select (multi panel, group drag, bulk delete)
 - Rendering: `render()` rebuilds all cards into `#nodes`; `drawEdges()` draws bezier connectors in an SVG layer; `applyView()` handles pan and zoom via a CSS transform on `#world`
 - Each box has its own optional colour (`colorOf`); presets in `COLORS` plus a native colour picker. Connectors use `--edge` (white in dark mode, dark grey in light mode)
+- Quick capture: `index.html?add=<text>` (from an Apple Shortcut / Siri / bookmark). `queueCapture()` stores it in localStorage `branches.inboxq` and strips the URL; `flushCapture()` runs once the board is ready (after the first sync snapshot when signed in, otherwise at once) and files each line as a task under the top-level box with `inbox:true` (created as "Inbox" if missing). `parseCapture()` pulls simple dates out of the text: today/tonight/tomorrow, weekday names, "in N days/weeks", "at 3pm"/"at 15:30"
 - Side panel (`renderPanel`) edits the selected card; the due list is `renderDue`
 - Sync: Firebase (project `branches-f3238`), Google sign-in + Firestore, SDK loaded by dynamic `import()` from gstatic.
   One doc per card at `users/{uid}/nodes/{id}`; `save()` also calls `queuePush()`, which diffs against `synced` and batch-writes changes.

@@ -1515,6 +1515,59 @@ $('#bTheme').onclick=()=>{
 };
 applyTheme(themePref());
 
+/* ---------- quick capture: open index.html?add=<text> (from a Shortcut, Siri, a bookmark…) ----------
+   The text is queued in localStorage, then filed as a task under the "Inbox" box once the board is ready
+   (after the synced board has loaded when signed in), so nothing is lost if the page closes early. */
+const INBOXQ='branches.inboxq';
+let captureReady=false;
+function queueCapture(){
+  const q=new URLSearchParams(location.search);const raw=q.get('add');if(raw===null)return;
+  const list=JSON.parse(lsGet(INBOXQ)||'[]');
+  raw.split(/\n+/).map(t=>t.trim()).filter(Boolean).forEach(t=>list.push({text:t,at:Date.now()}));
+  lsSet(INBOXQ,JSON.stringify(list));
+  q.delete('add');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash);
+}
+// "call Ana tomorrow at 3pm" → {title:'call Ana', due:'2026-10-19T15:00'}
+function parseCapture(text){
+  let t=' '+text.replace(/[.。]+$/,'').trim()+' ',date=null,time='';
+  const today=new Date();today.setHours(0,0,0,0);
+  const add=n=>{const d=new Date(today);d.setDate(d.getDate()+n);return d};
+  const take=(re,fn)=>{const m=t.match(re);if(!m)return false;fn(m);t=t.replace(m[0],' ');return true};
+  const WDN=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  take(/\s(?:by\s+|on\s+)?(today|tonight)\b/i,m=>{date=add(0);if(/tonight/i.test(m[1])&&!time)time='20:00'})||
+  take(/\s(?:by\s+|on\s+)?(tomorrow)\b/i,()=>{date=add(1)})||
+  take(/\s(?:by\s+|on\s+)?(?:(next|this)\s+)?(sun|mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?)(?:day)?\b/i,m=>{
+    const w=WDN.findIndex(d=>d.startsWith(m[2].toLowerCase().slice(0,3)));let n=(w-today.getDay()+7)%7||7;
+    date=add(n)})||   // "next friday" = the coming Friday
+  take(/\sin\s+(\d+)\s+(day|week)s?\b/i,m=>{date=add(+m[1]*(/week/i.test(m[2])?7:1))});
+  take(/\s(?:at\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?=\s)/i,m=>{let h=+m[1]%12;if(/p/i.test(m[3]))h+=12;time=String(h).padStart(2,'0')+':'+(m[2]||'00')})||
+  take(/\sat\s+(\d{1,2})(?:[:.](\d{2}))?(?=\s)/i,m=>{time=String(+m[1]).padStart(2,'0')+':'+(m[2]||'00')});
+  if(time&&!date){date=add(0);const [h,mi]=time.split(':').map(Number);if(h*60+mi<=new Date().getHours()*60+new Date().getMinutes())date=add(1)}
+  const ds=date?date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0'):'';
+  const title=t.replace(/\s+/g,' ').trim().replace(/\s+(on|by|at|in)$/i,'');
+  return {title:title||text.trim(),due:ds?ds+(time?'T'+time:''):''};
+}
+function inboxBox(){
+  let ib=all().find(n=>n.inbox&&!n.parent)||all().find(n=>!n.parent&&/^inbox$/i.test((n.title||'').trim()));
+  if(ib){ib.inbox=true;return ib.id}
+  const ns=all();let x=60,y=60;
+  if(ns.length){x=Math.min(...ns.map(n=>n.x));y=Math.min(...ns.map(n=>n.y))-260}
+  const id=create({title:'Inbox',size:3,x,y,color:'#4A5462',inbox:true});delete N(id)._new;render();return id;
+}
+function flushCapture(){
+  captureReady=true;
+  const list=JSON.parse(lsGet(INBOXQ)||'[]');if(!list.length)return;
+  const ib=inboxBox();let last=null;
+  for(const {text} of list){
+    const {title,due}=parseCapture(text);
+    const id=addChild(ib);Object.assign(N(id),{title,task:true,due});delete N(id)._new;render();last={id,title,due};
+  }
+  lsSet(INBOXQ,null);
+  nextLabel=list.length>1?`Added ${list.length} tasks to Inbox`:`Added “${last.title.slice(0,30)}” to Inbox`;save();
+  const di=last.due&&dueInfo(last.due);
+  toast(list.length>1?`Added ${list.length} tasks to Inbox`:`Added to Inbox: ${last.title}${di?' · '+di.label:''}`,'Show',()=>{setView('branches');select(last.id)});
+}
+
 /* ---------- sync (Firebase: one Firestore doc per card under users/{uid}/nodes) ---------- */
 const FB='https://www.gstatic.com/firebasejs/12.19.0/';
 const SYNC_UID='branches.syncUid',PRESYNC='branches.presync';
@@ -1564,6 +1617,7 @@ function onRemote(snap){
       if(sel&&!N(sel)){sel=null;closePanel()}
       renderQuiet();if(!known)fit();save();nextLabel='Loaded your synced board';checkpoint();
     }
+    flushCapture();
   }else{
     let changed=false;checkpoint();
     for(const c of snap.docChanges()){
@@ -1582,7 +1636,7 @@ function onRemote(snap){
   renderSyncBox();
 }
 async function initSync(){
-  if(!FIREBASE_CONFIG)return;
+  if(!FIREBASE_CONFIG){flushCapture();return}
   $('#bSync').hidden=false;setSync('loading');
   try{
     const [app,auth,fs]=await Promise.all(['app','auth','firestore'].map(x=>import(FB+'firebase-'+x+'.js')));
@@ -1594,14 +1648,14 @@ async function initSync(){
     auth.onAuthStateChanged(fb.au,u=>{
       if(unsub){unsub();unsub=null}
       user=u;firstSnap=true;synced={};
-      if(!u){setSync('off');renderSyncBox();
+      if(!u){setSync('off');renderSyncBox();flushCapture();
         // the Sync button sits at the far end of the toolbar and is easy to miss on a phone
         if(!nudged){nudged=true;setTimeout(()=>{if(!user)toast('This board is only on this device. Sign in to sync it with your other devices.','Sign in',signIn)},1200)}
         return}
       setSync('loading');renderSyncBox();
       unsub=fs.onSnapshot(fs.collection(db,'users',u.uid,'nodes'),{includeMetadataChanges:true},onRemote,e=>{console.error(e);setSync('error');toast('Sync stopped: '+(e.code||e.message))});
     });
-  }catch(e){console.error(e);setSync('error')}
+  }catch(e){console.error(e);setSync('error');flushCapture()}
 }
 $('#bSync').onclick=()=>{if(!fb)return;if(!user)signIn();else openModal()};
 function signIn(){
@@ -1880,6 +1934,7 @@ histEl.addEventListener('click',e=>{
 });
 
 /* ---------- boot ---------- */
+queueCapture();
 const had=load();
 if(!had)seed();
 applyView();render();
