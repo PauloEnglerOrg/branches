@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#E3E6E9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14171A" media="(prefers-color-scheme: dark)">
+<script>try{var t=localStorage.getItem('branches.theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}catch(e){}</script>
 <title>Branches</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -406,6 +409,7 @@ body:not([data-view="branches"]) .canvas-only{display:none}
 
   <div class="bar" id="topright">
     <button class="btn" id="bDue">Due <span class="badge" id="dueBadge" hidden>0</span></button>
+    <button class="btn" id="bTheme" aria-label="Appearance" title="Appearance"><span id="themeIco" aria-hidden="true">◐</span><span id="themeLbl" class="hide-sm">Auto</span></button>
     <span class="sep canvas-only"></span>
     <span class="fl hide-sm canvas-only" style="padding-left:4px">Drag moves</span>
     <div class="seg canvas-only" id="moveSeg">
@@ -1490,6 +1494,25 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='Enter'){e.preventDefault();const t=$('#pTitle');if(t)t.focus()}
   else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();del(sel)}
 });
+
+/* ---------- appearance (per device): auto follows the device, or force dark/light ---------- */
+const THEMEKEY='branches.theme';
+function themePref(){try{const t=localStorage.getItem(THEMEKEY);return t==='dark'||t==='light'?t:'auto'}catch(e){return 'auto'}}
+function applyTheme(t){
+  const r=document.documentElement;if(t==='auto')delete r.dataset.theme;else r.dataset.theme=t;
+  // browser chrome / status bar colour follows the board, not the device setting
+  const bg=getComputedStyle(document.body).backgroundColor;
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m=>{m.content=bg;if(t!=='auto')m.removeAttribute('media')});
+  $('#themeIco').textContent={auto:'◐',dark:'☾',light:'☀'}[t];
+  $('#themeLbl').textContent={auto:'Auto',dark:'Dark',light:'Light'}[t];
+  $('#bTheme').title='Appearance: '+{auto:'follows this device',dark:'always dark',light:'always light'}[t]+' (tap to change)';
+}
+$('#bTheme').onclick=()=>{
+  const next={auto:'dark',dark:'light',light:'auto'}[themePref()];
+  try{next==='auto'?localStorage.removeItem(THEMEKEY):localStorage.setItem(THEMEKEY,next)}catch(e){}
+  applyTheme(next);drawEdges();toast({auto:'Appearance follows this device',dark:'Dark mode on this device',light:'Light mode on this device'}[next]);
+};
+applyTheme(themePref());
 
 /* ---------- sync (Firebase: one Firestore doc per card under users/{uid}/nodes) ---------- */
 const FB='https://www.gstatic.com/firebasejs/12.19.0/';

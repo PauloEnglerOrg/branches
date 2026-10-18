@@ -30,7 +30,7 @@ Core needs: nested groups, free placement, different text sizes, and per-task ch
 
 ## Conventions
 - Keep it dependency-free unless a feature clearly needs a library (Firebase is the one exception, for sync)
-- Light and dark themes use CSS custom properties on `:root`
+- Light and dark themes use CSS custom properties on `:root`; `#bTheme` cycles Auto/Dark/Light per device (localStorage `branches.theme` → `data-theme` on `<html>`, applied in a head script before first paint; `theme-color` meta follows the board)
 - Must keep working on mobile (pointer events, pinch zoom, bottom-sheet panel under 720px)
 
 ## Possible next steps
